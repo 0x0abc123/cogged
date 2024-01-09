@@ -1,0 +1,9 @@
+{
+    "listen.host": "",
+    "listen.port": "8090",
+    "db.host": "10.20.0.5",
+    "db.port": "9080",
+    "log.level": "info",
+    "log.file": "cogged.log",
+    "secret.mode": "default"
+}
