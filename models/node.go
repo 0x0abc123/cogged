@@ -185,7 +185,7 @@ func NewGraphNodeEdge(parentUID string, childUID string) *GraphNode {
 }
 
 
-func (n *GraphNode) AuthzDataPack(key string) {
+func (n *GraphNode) AuthzDataPack(uad *sec.UserAuthData) {
 	ad := n.Uid + "."
 
 	if n.Owner != nil { ad += (*n.Owner).Uid }
@@ -201,11 +201,11 @@ func (n *GraphNode) AuthzDataPack(key string) {
 	if *n.PermDelete { ad += "d" }
 	if *n.PermShare { ad += "s" }
 
-	n.AuthzData = sec.MessageAndMAC(ad, key)
+	n.AuthzData = sec.MessageAndMAC(ad, uad.SecretKey)
 
 	if n.OutEdges != nil {
 		for _, e := range *n.OutEdges {
-			e.AuthzDataPack(key)
+			e.AuthzDataPack(uad)
 		}
 	}
 	return

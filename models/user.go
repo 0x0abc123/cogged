@@ -26,11 +26,11 @@ func NewGraphUser(userUid string) *GraphUser {
 }
 
 
-func (u *GraphUser) AuthzDataPack(key string) {
+func (u *GraphUser) AuthzDataPack(uad *sec.UserAuthData) {
 	ad := u.Uid + "."
 	if u.Role != nil { ad += (*u.Role) }
 	ad += "."
-	u.AuthzData = sec.MessageAndMAC(ad, key)
+	u.AuthzData = sec.MessageAndMAC(ad, uad.SecretKey)
 }
 
 

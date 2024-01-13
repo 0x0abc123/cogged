@@ -2,8 +2,8 @@ package responses
 
 import (
 	"time"
-	"cogged/log"
 	cm "cogged/models"
+	sec "cogged/security"
 )
 
 type CoggedResponse struct {
@@ -15,22 +15,26 @@ type CoggedResponse struct {
 	Error			string						`json:"error,omitempty"`
 }
 
-func (resp *CoggedResponse) AuthzDataPack(key string) {
+func (resp *CoggedResponse) AuthzDataPack(uad *sec.UserAuthData) {
 	if resp.ResultNodes != nil {
+		filteredNodes := []*cm.GraphNode{}
 		for _, node := range resp.ResultNodes {
-			node.AuthzDataPack(key)
-		}	
+			owner := node.Owner
+			if (owner!= nil && owner.Uid == uad.Uid) || uad.IsAdmin() || *node.PermRead {
+				node.AuthzDataPack(uad)
+				filteredNodes = append(filteredNodes, node)
+			}
+		}
+		resp.ResultNodes = filteredNodes
 	}
 
 	if resp.CreatedNodes != nil {
 		for _, node := range resp.CreatedNodes {
-			node.AuthzDataPack(key)
+			node.AuthzDataPack(uad)
 		}
 	}
 
 	// CreatedUids is only sent by PUT /admin/user so no need to do AuthzDataPack
-
-	log.Debug("CoggedResponse AuthzDataPack", nil)
 }
 
 func CoggedResponseFromNodes(nodes *[]*cm.GraphNode) *CoggedResponse {

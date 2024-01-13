@@ -2,6 +2,7 @@ package responses
 
 import (
 	cm "cogged/models"
+	sec "cogged/security"
 )
 
 type UserResponse struct {
@@ -20,8 +21,8 @@ func UserResponseFromUser(u *cm.GraphUser) *UserResponse {
 }
 
 
-func (resp *UserResponse) AuthzDataPack(key string) {
+func (resp *UserResponse) AuthzDataPack(uad *sec.UserAuthData) {
 	if resp.User != nil {
-		resp.User.AuthzDataPack(key)
+		resp.User.AuthzDataPack(uad)
 	}
 }

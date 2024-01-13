@@ -1,5 +1,7 @@
 package responses
 
+import sec "cogged/security"
+
 type AuthzDataPacker interface {
-	AuthzDataPack(key string) 
+	AuthzDataPack(UAD *sec.UserAuthData) 
 }

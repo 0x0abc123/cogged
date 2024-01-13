@@ -12,7 +12,7 @@ func tryAuthzDataPack[T any](v *T, uad *sec.UserAuthData) bool {
     adInterface := reflect.TypeOf(new(res.AuthzDataPacker)).Elem()
 	log.Debug("TryAuthzDataPack", adInterface, reflect.TypeOf(v), reflect.TypeOf(v).Implements(adInterface))
     if reflect.TypeOf(v).Implements(adInterface) {
-		any(v).(res.AuthzDataPacker).AuthzDataPack(uad.SecretKey)
+		any(v).(res.AuthzDataPacker).AuthzDataPack(uad)
 	}
 	return true
 }
