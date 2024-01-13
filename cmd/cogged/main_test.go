@@ -152,6 +152,12 @@ func TestDefaultHandler(t *testing.T) {
 		pr(t, dump(rr),nil)
 	}
 
+	// unauthenticated request to /auth/clientconfig should return 200
+	{
+		rr := makeRequest(t, dh, nil, "GET", "/auth/clientconfig", "", http.StatusOK)
+		pr(t, dump(rr),nil)
+	}
+
 	// Test unauthenticated request should return 401 
 	{
 		rr := makeRequest(t, dh, nil, "GET", "/auth/check", "", http.StatusUnauthorized)
@@ -179,6 +185,19 @@ func TestDefaultHandler(t *testing.T) {
 			// Create a request with the JSON payload
 			rr := makeRequest(t, dh, nil, "GET", "/auth/check", bearerTokenAdmin, http.StatusOK)
 			pr(t, dump(rr),nil)
+		}		
+
+		// /auth/refresh with token, should return 200 OK
+		{
+			// Create a request with the JSON payload
+			rr := makeRequest(t, dh, nil, "GET", "/auth/refresh", bearerTokenAdmin, http.StatusOK)
+			pr(t, dump(rr),nil)
+			var result res.TokenResponse
+			err := json.Unmarshal(rr.Body.Bytes(), &result)
+			if err != nil {
+				t.Errorf("error decoding JSON response: %v", err)
+			}
+			pr(t, result.Token, nil)
 		}		
 
 		userRole := "user"

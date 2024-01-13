@@ -3,7 +3,6 @@ package models
 import (
 	"time"
 	"strings"
-	"cogged/log"
 	sec "cogged/security"
 )
 
@@ -72,7 +71,6 @@ func (n *GraphNode) ConvertNullBoolFieldsToFalse() {
 func GraphNodeFromUnpackedAD(adStr string) *GraphNode {
 	if adStr != "" {
 		parts := strings.Split(adStr,".")
-log.Debug("GraphNodeFromUnpackedAD>", len(parts), parts)
 		if len(parts) == 3 {
 			uid := parts[0]
 			own := parts[1]
@@ -95,20 +93,15 @@ log.Debug("GraphNodeFromUnpackedAD>", len(parts), parts)
 
 func GraphNodeFromAD(packedAuthzData, key string) *GraphNode {
 	// authzData is <b64data>.<hmac> string
-log.Debug("GraphNodeFromAD> packedAuthzData", packedAuthzData)
 	adStr := DecodeAndVerifyAD(packedAuthzData, key)
-log.Debug("GraphNodeFromAD> DecodeAndVerifyAD", adStr)
 	return GraphNodeFromUnpackedAD(adStr)
 }
 
 
 func AuthzDataUnpackADString(ads string, uad sec.UserAuthData, permsRequired string) *GraphNode {
 	tmpNode := GraphNodeFromAD(ads, uad.SecretKey)
-log.Debug("AuthzDataUnpackADString> tmpNode", *tmpNode)
 	if tmpNode != nil {
-log.Debug("AuthzDataUnpackADString>", uad.Uid, (*tmpNode).Owner.Uid, permsRequired)
 		if (uad.Uid == (*tmpNode).Owner.Uid || uad.Role == sec.SYS_ROLE || tmpNode.HasRequiredPermissions(permsRequired)) {
-log.Debug("AuthzDataUnpackADString> return tmpNode")
 			return tmpNode
 		}
 	}
@@ -117,19 +110,15 @@ log.Debug("AuthzDataUnpackADString> return tmpNode")
 
 
 func AuthzDataUnpackADStringSlice(adSlice *[]string, uad sec.UserAuthData, permsRequired string) bool {
-log.Debug("AuthzDataUnpackADStringSlice>", adSlice, uad)
 	if adSlice != nil && len(*adSlice) > 0 {
 		for i, ads := range *adSlice {
 			tmpNode := AuthzDataUnpackADString(ads, uad, permsRequired)
-log.Debug("AuthzDataUnpackADStringSlice> tmpNode", *tmpNode)
 			if tmpNode != nil {
-log.Debug("AuthzDataUnpackADStringSlice> tmpNode.uid", (*tmpNode).Uid)
 				(*adSlice)[i] = (*tmpNode).Uid
 				continue
 			}
 			return false
 		}
-log.Debug("AuthzDataUnpackADStringSlice> return true")
 		return true
 	}
 	return false

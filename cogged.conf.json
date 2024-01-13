@@ -1,9 +1,10 @@
 {
     "listen.host": "",
     "listen.port": "8090",
-    "db.host": "10.20.0.5",
+    "db.host": "127.0.0.1",
     "db.port": "9080",
     "log.level": "info",
     "log.file": "cogged.log",
-    "secret.mode": "default"
+    "secret.mode": "default",
+    "auth.tokenexpiry": "600"
 }

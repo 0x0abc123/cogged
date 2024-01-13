@@ -3,8 +3,11 @@ package main
 import (
 	"os"
 	"fmt"
+	"time"
+	"strconv"
 	"flag"
 	"strings"
+	"reflect"
 	"errors"
     "net/http"
 	"io/ioutil"
@@ -28,8 +31,10 @@ type DefaultHandler struct {
 }
 
 
-func (h *DefaultHandler) ErrorResponse(code int, w http.ResponseWriter, r *http.Request) {
-    http.Error(w, http.StatusText(code), code)
+func (h *DefaultHandler) ErrorResponse(code int, message string, w http.ResponseWriter, r *http.Request) {
+	text := message
+	if len(message) < 1 { text = http.StatusText(code) }
+	http.Error(w, text, code)
 }
 
 
@@ -39,11 +44,19 @@ func (h *DefaultHandler) OkResponse(jsonString string, w http.ResponseWriter) {
 }
 
 
+func (h *DefaultHandler) checkTimestamp(timestamp string) bool {
+	tokenEpoch, convErr := strconv.ParseInt(timestamp, 10, 64)
+	if convErr!= nil { tokenEpoch = 0 }
+	nowEpoch := time.Now().Unix()
+	return nowEpoch - tokenEpoch < h.auth.TokenExpiry
+}
+
+
 func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// validate content type is JSON
 	ctype := r.Header["Content-Type"]
 	if len(ctype) != 1 || !strings.HasPrefix(ctype[0], "application/json") {
-		h.ErrorResponse(http.StatusBadRequest, w, r)
+		h.ErrorResponse(http.StatusUnsupportedMediaType, "only JSON accepted", w, r)
 		return
 	}
 
@@ -56,11 +69,11 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// /routegroup/endpoint/:param
 
 	if numParts < 2 {
-		h.ErrorResponse(http.StatusBadRequest, w, r)
+		h.ErrorResponse(http.StatusBadRequest, "bad route format", w, r)
 	} else {
 		routeGroup := routeParts[1]
 		if routeGroup == "" {
-			h.ErrorResponse(http.StatusBadRequest, w, r)
+			h.ErrorResponse(http.StatusBadRequest, "bad route format", w, r)
 			return
 		}
 
@@ -69,25 +82,35 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		authHdr := r.Header["Authorization"]
 		if len(authHdr) == 1 && strings.HasPrefix(authHdr[0], "Bearer ") {
-			// create user context struct from token, it will be passed to handlers' HandleRequest()
+			// create user auth context struct from token, it will be passed to handlers' HandleRequest()
 			tokStr := strings.Split(authHdr[0]," ")[1]
-
 			userAuthData = sec.UADFromToken(tokStr, h.auth.SecretKey)
-			log.Debug("userAuthData: %v\n",*userAuthData)
+
+			if userAuthData != nil {
+				log.Debug("userAuthData: %v\n",*userAuthData)
+
+				// check the token timestamp and whether it has expired
+				if !h.checkTimestamp(userAuthData.Timestamp) {
+					h.ErrorResponse(http.StatusUnauthorized, "token expired", w, r)
+					return	
+				}
+			} else {
+				log.Debug("malformed token or invalid MAC:",tokStr)
+			}
 		} 
 		
 		// no valid token was present in request headers
 		if userAuthData == nil {
 			// check whether the requested route is on the unauthenticated allowlist
 			if !(*h.allowList)[path] {
-				h.ErrorResponse(http.StatusUnauthorized, w, r)
+				h.ErrorResponse(http.StatusUnauthorized, "missing or invalid auth token", w, r)
 				return	
 			}
 		}
 		log.Debug("userauthdata",userAuthData)
 
 		if (*h.adminList)[routeGroup] && !userAuthData.IsAdmin() {
-			h.ErrorResponse(http.StatusUnauthorized, w, r)
+			h.ErrorResponse(http.StatusUnauthorized, "", w, r)
 			return	
 		}
 
@@ -121,14 +144,23 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case "user":
 				handler = &h.user
 			default:
-				h.ErrorResponse(http.StatusNotFound, w, r)
+				h.ErrorResponse(http.StatusNotFound, "", w, r)
 				return
 		}
 
 		handlerResponseStr, handlerErr = handler.HandleRequest(handlerKey, handlerParam, reqBodyString, userAuthData)
 
 		if handlerErr!= nil {
-			h.ErrorResponse(http.StatusInternalServerError, w, r)
+			statusCode := http.StatusInternalServerError
+			metaValue := reflect.ValueOf(handlerErr).Elem()
+			if sv := metaValue.FieldByName("StatusCode"); sv != (reflect.Value{}) {
+				statusCode = int(sv.Int())
+				if statusCode != 0 {
+					statusCode = statusCode
+				}	
+			}
+			msg := handlerErr.Error()
+			h.ErrorResponse(statusCode, msg, w, r)
 			log.Debug("handler error", handlerErr)
 		} else {
 			h.OkResponse(handlerResponseStr, w)
@@ -195,35 +227,22 @@ func addNewUser(flagValue string, db *svc.DB) (string, error) {
 func CreateDefaultHandler(conf *svc.Config, db *svc.DB, skB64 string) *DefaultHandler {
 	unauthenticatedRoutes := make(Set)
 	unauthenticatedRoutes["/auth/login"] = true
+	unauthenticatedRoutes["/auth/clientconfig"] = true
 	unauthenticatedRoutes["/health/status"] = true
 
 	adminRoutes := make(Set)
 	adminRoutes["admin"] = true
 
 	return &DefaultHandler{
-		health:	api.HealthAPI{},
-		auth:	api.AuthAPI{
-			Configuration: conf,
-			SecretKey: skB64,
-			Database: db,
-		},
-		admin:	api.AdminAPI{
-			Configuration: conf,
-			Database: db,
-		},
-		graph:	api.GraphAPI{
-			Configuration: conf,
-			Database: db,
-		},
-		user:	api.UserAPI{
-			Configuration: conf,
-			Database: db,
-		},
+		health:	*api.NewHealthAPI(),
+		auth:	*api.NewAuthAPI(conf, db, skB64),
+		admin:	*api.NewAdminAPI(conf, db),
+		graph:	*api.NewGraphAPI(conf, db),
+		user:	*api.NewUserAPI(conf, db),
 		allowList: &unauthenticatedRoutes,
 		adminList: &adminRoutes,
 	}
 }
-
 
 
 func main() {

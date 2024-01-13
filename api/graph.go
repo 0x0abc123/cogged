@@ -1,7 +1,6 @@
 package api
 
 import (
-	"cogged/log"
 	svc "cogged/services"
 	sec "cogged/security"
 	req "cogged/requests"
@@ -14,11 +13,18 @@ type GraphAPI struct {
 	Database		*svc.DB
 }
 
+
+func NewGraphAPI(config *svc.Config, db *svc.DB) *GraphAPI {
+	a := &GraphAPI{
+		Configuration: config,
+		Database: db,
+	}
+	return a
+}
+
+
 func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAuthData) (string, error) {
-	log.Debug("GraphAPI: HandleRequest", handlerKey, param, body)
-
 	ud := req.UnpackData{ UAD: uad }
-
 	uid := (*uad).Uid
 
 	switch handlerKey {
@@ -27,7 +33,7 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 			ud.RequiredPermissions = "r"
 			r := &req.QueryRequest{}
 			if berr := req.BindToRequest[req.QueryRequest](body, r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 			cr := h.Database.QueryWithOptions(r, svc.NODENODE)
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
@@ -36,7 +42,7 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 			ud.RequiredPermissions = "w"
 			r := &req.UpdateNodesRequest{}
 			if berr := req.BindToRequest[req.UpdateNodesRequest](body, r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 			cr,_ := h.Database.UpsertNodes(r.Nodes)
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
@@ -45,14 +51,13 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 			ud.RequiredPermissions = "o"
 			tn := cm.AuthzDataUnpackADString(param, *ud.UAD, ud.RequiredPermissions)
 			if tn == nil {
-				return "", &APIError{Info: "invalid create nodes parent ID"}
+				return "", &APIError{Info: "invalid create nodes parent ID", StatusCode: 400}
 			}
 			existingNodeUid := (*tn).Uid
-log.Debug("GraphAPI: existingNodeUid", existingNodeUid)
 
 			r := &req.CreateNodesRequest{}
 			if berr := req.BindToRequest[req.CreateNodesRequest](body, r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 
 			newnodes := *r.Nodes
@@ -70,7 +75,7 @@ log.Debug("GraphAPI: existingNodeUid", existingNodeUid)
 					for i, e := range *nOE {
 						edgeUid := (*e).Uid
 						if edgeUid == (*n).Uid {
-							return "", &APIError{Info: "invalid update nodes request (self link disallowed)"}
+							return "", &APIError{Info: "invalid update nodes request (self link disallowed)", StatusCode: 400}
 						}
 						// Only allow one level of depth for OutEdges, i.e. no multilevel nested edges
 						(*nOE)[i] = cm.NewGraphNodeJustUID(edgeUid)
@@ -91,7 +96,7 @@ log.Debug("GraphAPI: existingNodeUid", existingNodeUid)
 			}
 
 			if !atLeastOneNewNodeIsChildOfExistingNode {
-				return "", &APIError{Info: "at least one node must not have an inlink from another node in the new nodes list"}
+				return "", &APIError{Info: "at least one node must not have an inlink from another node in the new nodes list", StatusCode: 400}
 			}
 
 			for _, e := range newEdges {
@@ -104,20 +109,20 @@ log.Debug("GraphAPI: existingNodeUid", existingNodeUid)
 		case "PUT edges":
 			r := req.EdgesRequest{}
 			if berr := req.BindToRequest[req.EdgesRequest](body, &r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 			cr,_ := h.Database.AddNodeEdges(r.SubjectIds, r.IncomingIds, r.OutgoingIds) 
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
-		case "DELETE edges":
+		case "PATCH edges":
 			r := req.EdgesRequest{}
 			if berr := req.BindToRequest[req.EdgesRequest](body, &r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 			cr,_ := h.Database.RemoveNodeEdges(r.SubjectIds, r.IncomingIds, r.OutgoingIds) 
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 	}
 
-	return "", &APIError{Info: "not found"}
+	return "", &APIError{Info: "not found", StatusCode: 404}
 }

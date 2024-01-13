@@ -14,8 +14,9 @@ import (
 		"db.host": "localhost",
 		"db.port": "9080"
 		"log.level": "info",
-		"log.file": "cogged.log"
-		"secret.mode": "default"
+		"log.file": "cogged.log",
+		"secret.mode": "default",
+		"auth.tokenexpiry": "600"
 	}
 */
 

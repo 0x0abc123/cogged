@@ -2,7 +2,6 @@ package models
 
 import (
     "strings"
-	"cogged/log"
     sec "cogged/security"
 )
 
@@ -69,14 +68,12 @@ func AuthzDataUnpackUserADStringSlice(adSlice *[]string, uad sec.UserAuthData, p
 	if adSlice != nil && len(*adSlice) > 0 {
 		for i, ads := range *adSlice {
 			adStr := DecodeAndVerifyAD(ads, uad.SecretKey)
-log.Debug("AuthzDataUnpackUserADStringSlice> adStr", adStr)
 			if adStr != "" {
 				(*adSlice)[i] = adStr
 				continue
 			}
 			return false
 		}
-log.Debug("AuthzDataUnpackUserADStringSlice> return true")
 		return true
 	}
 	return false

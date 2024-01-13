@@ -1,7 +1,6 @@
 package api
 
 import (
-	"cogged/log"
 	svc "cogged/services"
 	sec "cogged/security"
 	req "cogged/requests"
@@ -14,12 +13,18 @@ type UserAPI struct {
 	Database		*svc.DB
 }
 
+
+func NewUserAPI(config *svc.Config, db *svc.DB) *UserAPI {
+	a := &UserAPI{
+		Configuration: config,
+		Database: db,
+	}
+	return a
+}
+
+
 func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAuthData) (string, error) {
-	log.Debug("UserAPI: HandleRequest", handlerKey, param, body)
-
 	ud := req.UnpackData{ UAD: uad }
-
-	//sk := (*uad).SecretKey
 	uid := (*uad).Uid
 	role := (*uad).Role
 
@@ -28,7 +33,7 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 		case "PUT node":
 			r := req.UserNodeRequest{}
 			if berr := req.BindToRequest[req.UserNodeRequest](body, &r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 			cr,_ := h.Database.UpsertUserNode(r.Node, uid)
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
@@ -43,11 +48,11 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 			case "own":
 				edgeType = svc.USERNODE
 			default:
-				return "", &APIError{Info: "invalid edge type"}
+				return "", &APIError{Info: "invalid edge type", StatusCode: 400}
 			}
 			r := req.QueryRequest{}
 			if berr := req.BindToRequest[req.QueryRequest](body, &r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 			r.RootIDs = []string{uid}
 			r.RootQuery = nil
@@ -59,7 +64,7 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 			ud.RequiredPermissions = "s"
 			r := req.ShareNodesRequest{}
 			if berr := req.BindToRequest[req.ShareNodesRequest](body, &r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 
 			usersToShareWith := []string{}
@@ -69,18 +74,18 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 				if *u.Role != sec.SYS_ROLE {
 					usersToShareWith = append(usersToShareWith, u.Uid)
 				} else {
-					return "", &APIError{Info: "user not found"}
+					return "", &APIError{Info: "user not found", StatusCode: 404}
 				}
 			} 
 
 			cr,_ := h.Database.UpdateUserShareEdges(r.Nodes, &usersToShareWith, svc.ADD) 
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
-		case "DELETE share":
+		case "PATCH share":
 			ud.RequiredPermissions = "s"
 			r := req.ShareNodesRequest{}
 			if berr := req.BindToRequest[req.ShareNodesRequest](body, &r, ud); berr != nil {
-				return "", &APIError{Info: berr.Error()}
+				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
 
 			usersToShareWith := []string{}
@@ -90,7 +95,7 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 				if *u.Role != sec.SYS_ROLE {
 					usersToShareWith = append(usersToShareWith, u.Uid)
 				} else {
-					return "", &APIError{Info: "user not found"}
+					return "", &APIError{Info: "user not found", StatusCode: 400}
 				}
 			} 
 
@@ -104,11 +109,11 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 				(*ur).User = ReturnUserDTO(u)
 				return MarshalJSON[res.UserResponse](ur, uad), nil
 			}
-			return "", &APIError{Info: (*ur).Error}
+			return "", &APIError{Info: (*ur).Error, StatusCode: 404}
 
 		case "GET uid":
 			if !svc.ValidateUid(param) {
-				return "", &APIError{Info: "invalid uid"}
+				return "", &APIError{Info: "invalid uid", StatusCode: 400}
 			}			
 			ur,_ := h.Database.QueryUserByUid(param, false)
 			u := (*ur).User
@@ -116,12 +121,11 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 				(*ur).User = ReturnUserDTO(u)
 				return MarshalJSON[res.UserResponse](ur, uad), nil
 			}
-log.Debug("UserAPI:GET uid", u, param, body)
-			return "", &APIError{Info: (*ur).Error}
+			return "", &APIError{Info: (*ur).Error, StatusCode: 404}
 
 	}
 
-	return "", &APIError{Info: "not found"}
+	return "", &APIError{Info: "not found", StatusCode: 404}
 }
 
 

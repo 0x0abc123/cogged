@@ -1,0 +1,1256 @@
+openapi: 3.0.3
+info:
+  title: Cogged
+  description: Cogged REST API
+  version: 0.2.0
+servers:
+  - url: http://localhost:8090/
+tags:
+  - name: auth
+    description: operations relating to authentication
+  - name: admin
+    description: operations relating to user admin
+  - name: user
+    description: operations for users to manage their own data and nodes
+  - name: graph
+    description: operations relating to graph database nodes and edges
+  - name: health
+    description: check health of the service
+paths:
+  /admin/user:
+    put:
+      tags:
+        - admin
+      security:
+        - bearerAuth: []
+      description: create a new user (superuser role required)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseCU'
+          description: ''
+  /admin/users:
+    patch:
+      tags:
+        - admin
+      security:
+        - bearerAuth: []
+      description: bulk update several users (superuser role required)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsersRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseEmpty'
+          description: ''
+  /auth/check:
+    get:
+      tags:
+        - auth
+      security:
+        - bearerAuth: []
+      description: check if auth token is valid
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: returns the literal string "OK"
+                type: string
+                example: OK
+          description: ''
+  /auth/clientconfig:
+    get:
+      tags:
+        - auth
+      description: get application-specific string for configuring the API client
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientConfig'
+          description: ''
+  /auth/login:
+    post:
+      tags:
+        - auth
+      description: login using a username and password and get an auth token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+  /auth/refresh:
+    get:
+      tags:
+        - auth
+      security:
+        - bearerAuth: []
+      description: already authenticated user can renew their auth token
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+  /graph/edges:
+    patch:
+      tags:
+        - graph
+      security:
+        - bearerAuth: []
+      description: remove an existing edge between a GraphNode and another GraphNode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EdgesRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseEmpty'
+          description: ''
+    put:
+      tags:
+        - graph
+      security:
+        - bearerAuth: []
+      description: add a new edge between a GraphNode and another GraphNode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EdgesRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseEmpty'
+          description: ''
+  /graph/nodes:
+    patch:
+      tags:
+        - graph
+      security:
+        - bearerAuth: []
+      description: bulk update predicates of existing GraphNodes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNodesRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseEmpty'
+          description: ''
+    post:
+      tags:
+        - graph
+      security:
+        - bearerAuth: []
+      description: Query Cogged database by traversing nodes with optional filters. The `root_query` field can only be set by superusers, QueryRequestClauses can only have either one of the 'and' or 'or' fields set. This will also cause the 'filter' field to be ignored. If you want just a single filter function, then set the filter field and leave the 'and' and 'or' fields null.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                nullable: false
+                properties:
+                  schema:
+                    $ref: '#/components/schemas/CoggedResponseRN'
+                type: object
+          description: ''
+  /graph/nodes/{ad}:
+    put:
+      tags:
+        - graph
+      security:
+        - bearerAuth: []
+      description: bulk create new GraphNodes
+      parameters:
+      - description: The new nodes will be a subgraph linked by an edge from this root node, specified by the AuthzData
+        in: path
+        name: ad
+        required: true
+        schema:
+          $ref: '#/components/schemas/AuthzData'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNodesRequest'
+      responses:
+        '200':
+          description: ''
+  /health/status:
+    get:
+      tags:
+        - health
+      description: check that Cogged server is alive
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                nullable: false
+                properties:
+                  status:
+                    description: returns {"status":"OK"}
+                    type: string
+                    example: OK
+                type: object
+          description: ''
+  /user/node:
+    put:
+      tags:
+        - user
+      security:
+        - bearerAuth: []
+      description: create a new GraphNode under the GraphUser node for the requesting user. An edge from the GraphUser to the new GraphNode will be created, and the owner of the node will be set to the requesting user, as per all create node operations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserNodeRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseCN'
+          description: ''
+  /user/nodes:
+    post:
+      tags:
+        - user
+      security:
+        - bearerAuth: []
+      description: search GraphNodes that are linked to the requesting GraphUser via traversing outwards on the "own" edge at a depth of 1. Query with optional filters. The `root_query` field is ignored, QueryRequestClauses can only have either one of the 'and' or 'or' fields set. This will also cause the 'filter' field to be ignored. If you want just a single filter function, then set the filter field and leave the 'and' and 'or' fields null.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                  $ref: '#/components/schemas/CoggedResponseRN'
+          description: ''
+  /user/share:
+    patch:
+      tags:
+        - user
+      security:
+        - bearerAuth: []
+      description: un-share node(s) with other users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareNodesRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseEmpty'
+          description: ''
+    put:
+      tags:
+        - user
+      security:
+        - bearerAuth: []
+      description: share node(s) with other users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareNodesRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseEmpty'
+          description: ''
+  /user/uid/{uid}:
+    get:
+      tags:
+        - user
+      security:
+        - bearerAuth: []
+      description: get GraphNode predicates for a given GraphUser UID
+      parameters:
+      - description: This is an actual dgraph UID of the format 0xNN
+        in: path
+        name: uid
+        schema:
+            type: string
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+          description: ''
+  /user/name/{username}:
+    get:
+      tags:
+        - user
+      security:
+        - bearerAuth: []
+      description: check if a given username is linked to a GraphUser
+      parameters:
+      - description: The string to search for in the "un" field of GraphUsers in the Cogged database
+        in: path
+        name: username
+        schema:
+            type: string
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+          description: ''
+components:
+  securitySchemes:
+#    bearerAuth:
+#      type: http
+#      scheme: bearer
+    bearerAuth:
+      type: apiKey
+      name: Authorization
+      in: header      
+  schemas:
+    AuthzData:
+      description: 'AuthzData is a field that looks like this:
+
+        `MHgxLnVzZXI.qfbxnKX605d64nlDRjfs4qthDJA5dOdunSgBIhoBu3E`
+
+
+        It is of the format `<base64_node_info>.<base64_hmac>`
+
+
+        The Base64 decoded node_info looks like:
+
+        `0x123.0x3a83f.rwoi`, which is of the format:
+
+        `node_uid.owner_uid.permissions`
+
+
+        The  Cogged backend encodes this node_info for each node before sending the
+        data to the client.
+
+        A HMAC (hashed message authentication code) is generated for each nodes''
+        node_info and attached to it.
+
+
+        AuthzData is decoded and the node_info part is validated against the HMAC
+        part of the identifier, when node data is sent back from client to server.
+        This is to protect against tampering of values, which could allow users to
+        create/read/update/delete information they are not allowed to.
+
+        '
+      type: string
+      example: MHgxMjMuMHhmMzhhNy5ydw.qfbxnKX605d64nlDRjfs4qthDJA5dOdunSgBIhoBu3E
+    CoggedResponseEmpty:
+      nullable: false
+      properties:
+        error:
+          nullable: false
+          type: string
+          example: ''
+        timestamp:
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+      type: object
+    CoggedResponseCN:
+      nullable: false
+      properties:
+        created_nodes:
+          nullable: false
+          properties:
+            $placeholder1:
+              $ref: '#/components/schemas/NodeEdgeData'
+          type: object
+        timestamp:
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+      type: object
+    CoggedResponseCU:
+      nullable: false
+      properties:
+        created_uids:
+          description: This field is only set by the PUT /admin/user endpoint when
+            new users are created. it contains the new GraphUser UIDs in plaintext
+            (i.e. not as AuthzData identifiers).
+          nullable: false
+          properties:
+            new:
+              description: UID of newly created user
+              type: string
+              example: '0x234'
+          type: object
+        timestamp:
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+      type: object
+    CoggedResponseRN:
+      nullable: false
+      properties:
+        result_nodes:
+          items:
+            $ref: '#/components/schemas/GraphNode'
+          nullable: false
+          type: array
+        timestamp:
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+      type: object
+    CreateNodesRequest:
+      description: create new nodes in the Cogged database
+      nullable: false
+      properties:
+        nodes:
+          description: The GraphNode objects should have $placeholder type UIDs, and
+            not actual 0xNN UIDs because these are new nodes being created
+          items:
+            $ref: '#/components/schemas/GraphNodeNew'
+          nullable: false
+          type: array
+      type: object
+    CreateUserRequest:
+      nullable: false
+      properties:
+        username:
+          description: username for new user. Cannot start with a tilde "~" character.
+            This prefix is for disabled users
+          type: string
+          example: 'exampleuser@exampleorg.dev'
+        password:
+          description: 'plaintext password value for new user. Will be salted and
+            hashed when stored in the Cogged database '
+          type: string
+          example: 'Ex4mPl3_P@55w0rd'
+        role:
+          description: Role for new user. Application-specific. The only reserved
+            value is "sys", which denotes superuser-privileged users.
+          type: string
+          example: 'sys'
+        us:
+          description: application-specific custom data for a user. Can be set by
+            system-role users. Included in data sent to a user upon successful login
+          type: string
+          example: '{"custom":"userdata"}'
+        intd:
+          description: internal data (arbitrary string field) attached to each user.
+            Is read/write for system-role users only
+          type: string
+          example: 'internaldata,arbitrary,strings'
+      type: object
+    EdgesRequest:
+      nullable: false
+      properties:
+        incoming_ids:
+          description: 'AuthzData identifiers that specify the GraphNodes where outgoing
+            edges will be created from to link nodes listed in subject_ids. '
+          items:
+            $ref: '#/components/schemas/AuthzData'
+          nullable: false
+          type: array
+        outgoing_ids:
+          description: 'AuthzData identifiers specifying which GraphNodes will receive
+            incoming edges from the nodes listed in subject_ids. '
+          items:
+            $ref: '#/components/schemas/AuthzData'
+          nullable: false
+          type: array
+        subject_ids:
+          description: 'AuthzData identifiers that specify the GraphNodes that will
+            be the target of incoming edges (from all nodes listed in incoming_ids)
+            or where outgoing edges will be created from to link nodes listed in outgoing_ids. '
+          items:
+            $ref: '#/components/schemas/AuthzData'
+          nullable: false
+          type: array
+      type: object
+    Geoloc:
+      description: User-defined geolocation field
+      nullable: false
+      properties:
+        coordinates:
+          items:
+            format: float
+            type: number
+            example: 45.21481
+          maxItems: 2
+          minItems: 2
+          nullable: false
+          type: array
+        type:
+          type: string
+          example: 'Point'
+      required:
+      - type
+      - coordinates
+      type: object
+    GraphNode:
+      nullable: false
+      properties:
+        ad:
+          $ref: '#/components/schemas/AuthzData'
+        uid:
+          description: 'Depending on the operation (read, create or update) this could
+            be:
+
+            - (READ) Unique ID (dgraph ID) for the node, of the format 0xNN
+
+            - (CREATE) temporary placeholder ID of the format $placeholder
+
+            - (UPDATE) same as read, but the UID will be checked if it matches the
+            AuthzData to prevent tampering'
+          type: string
+          example: '0x1234'
+        own:
+          $ref: '#/components/schemas/Owner'
+        r:
+          description: Other users (aside from the owner or system user) can read
+            this node's data
+          type: boolean
+        w:
+          description: Other users (aside from the owner or system user) can insert
+            or modify this node's data
+          type: boolean
+          example: true
+        o:
+          description: Other users (aside from the owner or system user) can create
+            outbound edges to other nodes from this node
+          type: boolean
+          example: true
+        i:
+          description: Other users (aside from the owner or system user) can create
+            edges from other nodes to this node
+          type: boolean
+          example: true
+        d:
+          description: Other users (aside from the owner or system user) can delete
+            this node
+          type: boolean
+          example: true
+        s:
+          description: Other users (aside from the owner or system user) can share
+            this node with other users
+          type: boolean
+        b:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'YgThiWf5zVVbrZynndqwMljuyxI='
+        c:
+          description: timestamp value for when node was created
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        e:
+          description: Edge data (UID, owner, permissions, AuthzData) for the nodes
+            that are linked to by the outbound edges from the parent node
+          items:
+            $ref: '#/components/schemas/NodeEdgeData'
+          nullable: false
+          type: array
+        g:
+          $ref: '#/components/schemas/Geoloc'
+        id:
+          description: user-defined field for a unique label for the node
+          type: string
+          example: 'xyz/987/ab'
+        m:
+          description: timestamp value for when node was last modified
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        n1:
+          description: user-defined field that can contain arbitrary numeric data
+            for the node
+          format: float
+          type: number
+          example: 123.45678
+        n2:
+          description: user-defined field that can contain arbitrary numeric data
+            for the node
+          format: float
+          type: number
+          example: 123.45678
+        p:
+          description: user-defined field for private data relating to the node (Cogged
+            strips this from the node data when queried by users other than the owner
+            or system role users)
+          type: string
+          example: 'private data'
+        s1:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        s2:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        s3:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        s4:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        t1:
+          description: 'user-defined field to store application-specific, arbitrary
+            timestamp data '
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        t2:
+          description: 'user-defined field to store application-specific, arbitrary
+            timestamp data '
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        ty:
+          description: user-defined field for the node type (specific to the application)
+          type: string
+          example: 'account'
+      type: object
+    GraphNodeNew:
+      nullable: false
+      properties:
+        uid:
+          description: 'temporary placeholder ID of the format $placeholder'
+          type: string
+          example: '$placeholder1'
+        r:
+          description: Other users (aside from the owner or system user) can read
+            this node's data
+          type: boolean
+        w:
+          description: Other users (aside from the owner or system user) can insert
+            or modify this node's data
+          type: boolean
+          example: true
+        o:
+          description: Other users (aside from the owner or system user) can create
+            outbound edges to other nodes from this node
+          type: boolean
+          example: true
+        i:
+          description: Other users (aside from the owner or system user) can create
+            edges from other nodes to this node
+          type: boolean
+          example: true
+        d:
+          description: Other users (aside from the owner or system user) can delete
+            this node
+          type: boolean
+          example: true
+        s:
+          description: Other users (aside from the owner or system user) can share
+            this node with other users
+          type: boolean
+        b:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'YgThiWf5zVVbrZynndqwMljuyxI='
+        c:
+          description: timestamp value for when node was created
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        e:
+          description: Edge data (UID, owner, permissions, AuthzData) for the nodes
+            that are linked to by the outbound edges from the parent node
+          items:
+            $ref: '#/components/schemas/NodeEdgeDataNew'
+          nullable: false
+          type: array
+        g:
+          $ref: '#/components/schemas/Geoloc'
+        id:
+          description: user-defined field for a unique label for the node
+          type: string
+          example: 'xyz/987/ab'
+        m:
+          description: timestamp value for when node was last modified
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        n1:
+          description: user-defined field that can contain arbitrary numeric data
+            for the node
+          format: float
+          type: number
+          example: 123.45678
+        n2:
+          description: user-defined field that can contain arbitrary numeric data
+            for the node
+          format: float
+          type: number
+          example: 123.45678
+        p:
+          description: user-defined field for private data relating to the node (Cogged
+            strips this from the node data when queried by users other than the owner
+            or system role users)
+          type: string
+          example: 'private data'
+        s1:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        s2:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        s3:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        s4:
+          description: user-defined field that can contain arbitrary text data for
+            the node
+          type: string
+          example: 'application specific string'
+        t1:
+          description: 'user-defined field to store application-specific, arbitrary
+            timestamp data '
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        t2:
+          description: 'user-defined field to store application-specific, arbitrary
+            timestamp data '
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+        ty:
+          description: user-defined field for the node type (specific to the application)
+          type: string
+          example: 'account'
+      type: object
+    GraphUser:
+      nullable: false
+      properties:
+        ad:
+          $ref: '#/components/schemas/AuthzData'
+        intd:
+          description: internal data (arbitrary string field) attached to each user.
+            Is read/write for system-role users only
+          type: string
+          example: 'internaldata,arbitrary,text'
+        nodes:
+          description: The user's root-level GraphNodes. The user will own these nodes
+          items:
+            $ref: '#/components/schemas/GraphNode'
+          nullable: false
+          type: array
+        ph:
+          description: password (plaintext), only sent from client to server. Not
+            present in responses from server
+          type: string
+          example: 'Ex4mPl3_P@55w0rd'
+        role:
+          description: application-specific role for user.  The only reserved role
+            value is "sys", used to flag superusers.
+          type: string
+          example: 'sys'
+        shr:
+          description: GraphNodes that  have been shared with this user
+          items:
+            $ref: '#/components/schemas/GraphNode'
+          nullable: false
+          type: array
+        uid:
+          description: UID (dgraph unique ID) of the user, of the format 0xNN
+          type: string
+          example: '0x1234'
+        un:
+          description: username
+          type: string
+          example: 'exampleuser@exampleorg.dev'
+        us:
+          description: application-specific custom data for a user. Can be set by
+            system-role users. Included in data sent to a user upon successful login
+          type: string
+          example: 'arbitrary,string,data'
+      type: object
+    GraphUserDTO:
+      nullable: false
+      properties:
+        ad:
+          $ref: '#/components/schemas/AuthzData'
+        role:
+          description: application-specific role for user.  The only reserved role
+            value is "sys", used to flag superusers.
+          type: string
+          example: 'sys'
+        uid:
+          description: UID (dgraph unique ID) of the user, of the format 0xNN
+          type: string
+          example: '0x1234'
+        un:
+          description: username
+          type: string
+          example: 'exampleuser@exampleorg.dev'
+        us:
+          description: application-specific custom data for a user. Can be set by
+            system-role users. Included in data sent to a user upon successful login
+          type: string
+          example: 'arbitrary,string,data'
+      type: object
+    GraphUserAdmin:
+      nullable: false
+      properties:
+        uid:
+          description: UID (dgraph unique ID) of the user, of the format 0xNN
+          type: string
+          example: '0x1234'
+        un:
+          description: username
+          type: string
+          example: 'exampleuser@exampleorg.dev'
+        ph:
+          description: password (plaintext), only sent from client to server. Not
+            present in responses from server
+          type: string
+          example: 'Ex4mPl3_P@55w0rd'
+        role:
+          description: application-specific role for user.  The only reserved role
+            value is "sys", used to flag superusers.
+          type: string
+          example: 'sys'
+        us:
+          description: application-specific custom data for a user. Can be set by
+            system-role users. Included in data sent to a user upon successful login
+          type: string
+          example: 'arbitrary,string,data'
+        intd:
+          description: internal data (arbitrary string field) attached to each user.
+            Is read/write for system-role users only
+          type: string
+          example: 'internaldata,arbitrary,text'
+      type: object
+    LoginRequest:
+      nullable: false
+      properties:
+        password:
+          type: string
+          example: 'Ex4mPl3_P@55w0rd'
+        username:
+          type: string
+          example: 'exampleuser@exampleorg.dev'
+      type: object
+    NodeEdgeData:
+      description: 'Data relating to an edge of a GraphNode (UID, Owner, permissions,
+        AuthzData) '
+      nullable: false
+      properties:
+        AuthzData:
+          $ref: '#/components/schemas/AuthzData'
+        uid:
+          type: string
+          example: '0x1234'
+        own:
+          $ref: '#/components/schemas/Owner'
+        r:
+          type: boolean
+          example: true
+        w:
+          type: boolean
+          example: true
+        o:
+          type: boolean
+          example: true
+        i:
+          type: boolean
+          example: true
+        d:
+          type: boolean
+          example: true
+        s:
+          type: boolean
+          example: true
+      required:
+      - uid
+      type: object
+    NodeEdgeDataNew:
+      description: 'Data relating to an edge of a new GraphNode (UID, Owner, permissions,
+        AuthzData) '
+      nullable: false
+      properties:
+        uid:
+          type: string
+          example: '$placeholder2'
+      required:
+      - uid
+      type: object
+    Owner:
+      description: Object containing UID (0xNN) of GraphNode owner
+      nullable: false
+      properties:
+        uid:
+          type: string
+          example: '0x1234'
+      required:
+      - uid
+      type: object
+    QueryRequest:
+      nullable: false
+      properties:
+        depth:
+          description: Traversal depth (recurse outwards from GraphNodes specified
+            by root-ids). The depth value limits how many levels of outbound edges
+            are traversed in the recursive search.
+          type: integer
+          example: 14
+        filters:
+          $ref: '#/components/schemas/QueryRequestClause'
+        root_ids:
+          description: The AuthzData representing the IDs of the root nodes to traverse
+            outwards from at depth specified by the "depth" field in the request.
+            The traversal uses the "e" (edges) predicate, which means recursively
+            following outbound-linked GraphNodes from the root nodes
+          items:
+            $ref: '#/components/schemas/AuthzData'
+          nullable: false
+          type: array
+        root_query:
+          $ref: '#/components/schemas/QueryRequestClause'
+        select:
+          description: 'GraphNode fields that will be included in query results. Allowed
+            fields are:
+
+            - e
+
+            - ty
+
+            - id
+
+            - p
+
+            - s1
+
+            - s2
+
+            - s3
+
+            - s4
+
+            - b
+
+            - n1
+
+            - n2
+
+            - c
+
+            - m
+
+            - t1
+
+            - t2
+
+            - g'
+          items:
+            type: string
+            example: s1
+          nullable: false
+          type: array
+      type: object
+    QueryRequestClause:
+      nullable: false
+      properties:
+        and:
+          description: logical AND of the filter sub clauses contained in the array
+          items:
+            $ref: '#/components/schemas/QueryRequestClauseNested'
+          nullable: false
+          type: array
+        or:
+          description: logical OR of the filter sub clauses contained in the array
+          items:
+            $ref: '#/components/schemas/QueryRequestClauseNested'
+          nullable: false
+          type: array
+        field:
+          description: 'GraphNode field to filter on. Allowed fields are:
+
+            - e
+
+            - ty
+
+            - id
+
+            - p
+
+            - s1
+
+            - s2
+
+            - s3
+
+            - s4
+
+            - b
+
+            - n1
+
+            - n2
+
+            - c
+
+            - m
+
+            - t1
+
+            - t2
+
+            - g'
+          type: string
+          example: id
+        op:
+          description: 'operation for the GraphNode filter. Allowed values are:
+
+            - has (match text)
+
+            - eq (equals)
+
+            - gt (greater than)
+
+            - lt (less than)
+
+            - gte (greater than or equal to)
+
+            - lte (less than or equal to)
+
+            '
+          type: string
+          example: eq
+        val:
+          description: 'The value to use in the filter. For example, if the filter
+            is:
+
+            Field: "m" , Op: "gt", Val: "2022-04-15T12:33:05.999Z", the filter value
+            is the datetime  15th April 2022 12:33:05.999 UTC'
+          type: string
+          example: examplevalue
+      type: object
+    QueryRequestClauseNested:
+      nullable: false
+      properties:
+        field:
+          description: 'GraphNode field to filter on. Allowed fields are:
+
+            - e
+
+            - ty
+
+            - id
+
+            - p
+
+            - s1
+
+            - s2
+
+            - s3
+
+            - s4
+
+            - b
+
+            - n1
+
+            - n2
+
+            - c
+
+            - m
+
+            - t1
+
+            - t2
+
+            - g'
+          type: string
+          example: id
+        op:
+          description: 'operation for the GraphNode filter. Allowed values are:
+
+            - has (match text)
+
+            - eq (equals)
+
+            - gt (greater than)
+
+            - lt (less than)
+
+            - gte (greater than or equal to)
+
+            - lte (less than or equal to)
+
+            '
+          type: string
+          example: eq
+        val:
+          description: 'The value to use in the filter. For example, if the filter
+            is:
+
+            Field: "m" , Op: "gt", Val: "2022-04-15T12:33:05.999Z", the filter value
+            is the datetime  15th April 2022 12:33:05.999 UTC'
+          type: string
+          example: examplevalue
+      type: object
+    ShareNodesRequest:
+      nullable: false
+      properties:
+        nodes:
+          description: AuthzData identifiers that specify which GraphNodes will be
+            shared with users listed in the users field of the request
+          items:
+            $ref: '#/components/schemas/AuthzData'
+          minItems: 1
+          nullable: false
+          type: array
+        users:
+          description: AuthzData identifiers that specify which users will be granted
+            access to the GraphNodes  listed in the "nodes" field of the request
+          items:
+            $ref: '#/components/schemas/AuthzData'
+          minItems: 1
+          nullable: false
+          type: array
+          uniqueItems: true
+      required:
+      - nodes
+      - users
+      type: object
+    TokenResponse:
+      nullable: false
+      properties:
+        exp:
+          description: expiry time in seconds for auth token
+          type: integer
+          example: 600
+        token:
+          description: 'auth token that should be sent with subsequent requests to
+            the Cogged backend in the Authorization header'
+          type: string
+          example: 'MHgzNC5zeXMuMTcwNTExMDAwMg.AeikLCFQtA5UfewdlN8DvakO8UvY_NibaJaPrcnIMmQ'
+      type: object
+    UpdateNodesRequest:
+      nullable: false
+      properties:
+        nodes:
+          description: GraphNode data for existing nodes in the Cogged database, which
+            will be updated. Each node must have a UID, owner and permissions matching
+            the data in its AuthzData field. This is to prevent tampering and spoofing
+            requests to update nodes that the requesting user does not have access
+            to or permissions for.  Nested nodes via the edges property are not allowed.
+          items:
+            $ref: '#/components/schemas/GraphNode'
+          minItems: 1
+          nullable: false
+          type: array
+          uniqueItems: true
+      required:
+      - nodes
+      type: object
+    UserNodeRequest:
+      nullable: false
+      properties:
+        node:
+          $ref: '#/components/schemas/GraphNodeNew'
+      required:
+      - node
+      type: object
+    UserResponse:
+      nullable: false
+      properties:
+        error:
+          description: If this field is non-empty, then an error occurred (the user
+            field should be null) and it contains error information
+          type: string
+          example: ''
+        user:
+          $ref: '#/components/schemas/GraphUserDTO'
+      type: object
+    UsersRequest:
+      nullable: false
+      properties:
+        users:
+          description: bulk update of GraphUsers. The values in "ph" are plaintext
+            passwords and do not need to be hashed. The API endpoint will salt and
+            hash the passwords before storing them in the Cogged database
+          items:
+            $ref: '#/components/schemas/GraphUserAdmin'
+          minItems: 1
+          nullable: false
+          type: array
+          uniqueItems: true
+      required:
+      - users
+      type: object
+    ClientConfig:
+      nullable: false
+      properties:
+        config:
+          description: application-specific configuration string that can be fetched by the API client
+          type: string
+          example: '{"example":"configdata"}'
+      type: object

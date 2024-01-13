@@ -16,7 +16,8 @@ func dump(msg string, obj ...interface{}) {
 			objsSerialised += "," + string(j) 
 		}	
 	}
-	fmt.Println(time.Now(), strings.TrimSpace(msg), objsSerialised)
+	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+	fmt.Println(timestamp, strings.TrimSpace(msg), objsSerialised)
 }
 
 
