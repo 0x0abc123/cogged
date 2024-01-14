@@ -269,7 +269,7 @@ An example application feature that has been implemented using the DCG schema is
 
 User "Alice" has shared their "partytime" Playlist with user "Bob" by creating a `shr` edge from "Bob" to the Playlist node. Bob can traverse out from that `shr` edge to the playlist and onwards to its tracks. No other users have a `shr` edge to that playlist so they cannot reach it, and therefore access it.
 
-The "s" permission on Alice's "partytime" playlist means that Bob can also share it with other users.
+The "s" permission on Alice's "partytime" playlist means that Bob can also share it with other users that Bob chooses.
 
 The "o" permission on Alice's "partytime" playlist means that Bob can add or remove tracks from it.
 
@@ -277,10 +277,10 @@ The "o" permission on Alice's "partytime" playlist means that Bob can add or rem
 
 Cogged's design relies on the server-side checking the permissions set on nodes against operations requested by a user. To do this, the application could:
 
-1. Not send permissions or owner information with each node sent from Cogged to the client, and on every CRUD operation, check the permissions in the database for each node UID involved in the operation. This would require a query followed by an upsert, which is not very efficient.
-2. Send the node's permissions and owner info along with the other node predicates to the client side, and have the client send it back to Cogged with the node when executing a CRUD operation. Because all the required information to make an access control decision is included with the request, there is less latency/overhead, although there is potentially some tradeoff with network bandwidth.
+1. Not send permissions or owner information with each node sent from Cogged to the client, and on every CRUD operation requested by the client, check the permissions in the database for each node UID involved in the operation. This would require a Dgraph query followed by an upsert, which is not so efficient.
+2. Send the node's permissions and owner info along with the other node predicates to the client side, and have the client send it back to Cogged with the node when executing a CRUD operation (a kind of "stateless" approach). Because all the required information to make an access control decision is included with the request, there is less latency/overhead, although there is potentially some tradeoff with network bandwidth.
 
-Although #2 could solve the issue with #1, it is insecure: a user could tamper with the permissions before sending the node info back, for example setting the "write" permission on a node they shouldn't be allowed to write to.
+Although #2 could address the issue with #1, it is insecure: a user could tamper with the permissions before sending the node info back, for example setting the "write" permission on a node they shouldn't be allowed to write to.
 
 Notwithstanding that security problem, there is another challenge with this design:
 

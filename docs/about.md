@@ -277,16 +277,16 @@ The "o" permission on Alice's "partytime" playlist means that Bob can add or rem
 
 Cogged's design relies on the server-side checking the permissions set on nodes against operations requested by a user. To do this, the application could:
 
-1. Not send permissions or owner information with each node sent from Cogged to the client, and on every CRUD operation, check the permissions in the database for each node UID involved in the operation. This would require a query followed by an upsert, which is not very efficient.
-2. Send the node's permissions and owner info along with the other node predicates to the client side, and have the client send it back to Cogged with the node when executing a CRUD operation. Because all the required information to make an access control decision is included with the request, there is less latency/overhead, although there is potentially some tradeoff with network bandwidth.
+1. Not send permissions or owner information with each node sent from Cogged to the client, and on every CRUD operation requested by the client, check the permissions in the database for each node UID involved in the operation. This would require a Dgraph query followed by an upsert, which is not so efficient.
+2. Send the node's permissions and owner info along with the other node predicates to the client side, and have the client send it back to Cogged with the node when executing a CRUD operation (a kind of "stateless" approach). Because all the required information to make an access control decision is included with the request, there is less latency/overhead, although there is potentially some tradeoff with network bandwidth.
 
-Although #2 could solve the issue with #1, it is insecure: a user could tamper with the permissions before sending the node info back, for example setting the "write" permission on a node they shouldn't be allowed to write to.
+Although #2 could address the issue with #1, it is insecure: a user could tamper with the permissions before sending the node info back, for example setting the "write" permission on a node they shouldn't be allowed to write to.
 
 Notwithstanding that security problem, there is another challenge with this design:
 
 Dgraph UIDs are sequential and very predictable, they are of the format `0xNN`, for example `0x1a5,0x1a6,0x1a7`.
 
-This means that even if malicious users can't reach an arbitrary node via graph traversal, they could guess the node UIDs.
+This means that even if malicious users can't reach an arbitrary node via graph traversal, they could guess the node UIDs, and insert them into a CRUD operation.
 
 This type of security issue is called an Insecure Direct Object Reference (IDOR) vulnerability.
 
