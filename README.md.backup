@@ -34,7 +34,7 @@ docker run -it --rm --net=host dgraph/standalone:v22.0.2
 
 **Installing binaries:**
 
-Do this for a production environment:
+Do this for a production environment
 
 ```bash
 export DGRAPHVERSION=v22.0.2
