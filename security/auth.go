@@ -11,6 +11,7 @@ const SYS_ROLE = "sys"
 type UserAuthData struct {
 	Uid			string
 	Role		string
+	TokenId		string
 	Timestamp	string
 	SecretKey	string
 }
@@ -35,9 +36,9 @@ func MessageAndMAC(message, key string) string {
 }
 
 
-func ConstructToken(uid, role, timestamp, key string) string {
+func ConstructToken(uid, role, tokenid, timestamp, key string) string {
 	t := ""
-	t = uid + "." + role + "." + timestamp
+	t = uid + "." + role + "." + tokenid + "." + timestamp
 	return MessageAndMAC(t,key)
 }
 
@@ -66,14 +67,15 @@ func UADFromToken(token, key string) *UserAuthData {
 	}
 
 	up := strings.Split(string(B64Decode(t64)),".")
-	if len(up) != 3 {
+	if len(up) != 4 {
 		return nil
 	}
 
 	return &UserAuthData{
 		Uid: up[0],
 		Role: up[1],
-		Timestamp: up[2],
+		TokenId: up[2],
+		Timestamp: up[3],
 		SecretKey: UserKeyFromMasterSecret(key,up[0],up[1]),
 	}
 }

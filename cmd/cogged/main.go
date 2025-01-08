@@ -16,6 +16,7 @@ import (
 	cm "cogged/models"
 	svc "cogged/services"
 	sec "cogged/security"
+	state "cogged/state"
 )
 
 type Set map[string]bool
@@ -51,6 +52,9 @@ func (h *DefaultHandler) checkTimestamp(timestamp string) bool {
 	return nowEpoch - tokenEpoch < h.auth.TokenExpiry
 }
 
+func (h *DefaultHandler) checkTokenId(userid, tokenId string) bool {
+	return state.UsmCheckTokenId(userid, tokenId)
+}
 
 func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// validate content type is JSON
@@ -91,8 +95,13 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				// check the token timestamp and whether it has expired
 				if !h.checkTimestamp(userAuthData.Timestamp) {
+					state.UsmDeleteTokenId(userAuthData.Uid, userAuthData.TokenId)
 					h.ErrorResponse(http.StatusUnauthorized, "token expired", w, r)
 					return	
+				}
+				if !h.checkTokenId(userAuthData.Uid, userAuthData.TokenId) {
+					h.ErrorResponse(http.StatusUnauthorized, "invalid token ID", w, r)
+					return
 				}
 			} else {
 				log.Debug("malformed token or invalid MAC:",tokStr)
@@ -289,6 +298,10 @@ func main() {
 
 	sk := loadAuthzSecretKey()
 	skB64 := sec.B64Encode(sk)
+
+	state.UsmInit()
+	state.UsmRun()
+	state.UsmTest1()
 
 	dh := CreateDefaultHandler(conf, db, skB64)
 

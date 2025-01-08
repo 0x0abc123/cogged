@@ -10,6 +10,7 @@ const TMP_UID_PREFIX = "$"
 
 type CreateNodesRequest struct {
 	Nodes	*[]*cm.GraphNode	`json:"nodes,omitempty"`
+	ResetSgi	bool	`json:"reset_sgi"`
 }
 
 
@@ -44,6 +45,6 @@ func CheckUidsArePlaceholders(nl *[]*cm.GraphNode) bool {
 
 
 func (req *CreateNodesRequest) Validate() bool {
-	res := CheckUidsArePlaceholders(req.Nodes)
+	res := req.Nodes != nil && len(*req.Nodes) > 0 && CheckUidsArePlaceholders(req.Nodes)
 	return res
 }

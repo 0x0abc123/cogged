@@ -10,6 +10,7 @@ import (
 	res "cogged/responses"
 	svc "cogged/services"
 	sec "cogged/security"
+	state "cogged/state"
 )
 
 type AuthAPI struct {
@@ -37,11 +38,16 @@ func getTokenExpiry(confTime string) int64 {
 }
 
 
-func (h *AuthAPI) tokenResponse(uid, role string) *res.TokenResponse {
+func newTokenId() string {
+	b,_ := sec.GenerateRandomBytes(3)
+	return sec.B64Encode(b)
+}
+
+func (h *AuthAPI) tokenResponse(uid, role, tokenId string) *res.TokenResponse {
 	// issue token
 	issuedAt := time.Now().Unix()
 	timestamp := fmt.Sprintf("%d", issuedAt)
-	tok := sec.ConstructToken(uid, role, timestamp, h.SecretKey)
+	tok := sec.ConstructToken(uid, role, tokenId, timestamp, h.SecretKey)
 	tr := &res.TokenResponse{
 		Token: tok,
 		Expires: int(h.TokenExpiry),
@@ -69,17 +75,23 @@ func (h *AuthAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 			loggedInUser := dbres.User
 			log.Debug("loggedInUser.PasswordHash",*loggedInUser.PasswordHash)
 
-			tr := h.tokenResponse(loggedInUser.Uid, *loggedInUser.Role)		
+			nti := newTokenId()
+			state.UsmAddTokenId(loggedInUser.Uid, nti)
+			tr := h.tokenResponse(loggedInUser.Uid, *loggedInUser.Role, nti)
 			resp, err := json.Marshal(tr)
 			return string(resp), err
-			
+
+		case "POST logout":
+			state.UsmDeleteTokenId(uad.Uid, uad.TokenId)
+			return "{}", nil
+
 		case "GET refresh":
-			tr := h.tokenResponse(uad.Uid, uad.Role)
+			tr := h.tokenResponse(uad.Uid, uad.Role, uad.TokenId)
 			resp, err := json.Marshal(tr)
 			return string(resp), err
 
 		case "GET check":
-			return "OK", nil
+			return "{}", nil
 
 		case "GET clientconfig":
 			d := map[string]string{"config": h.Configuration.Get("client.config")}

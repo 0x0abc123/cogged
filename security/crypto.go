@@ -9,6 +9,9 @@ import (
 	"crypto/cipher"
 	"crypto/sha512"
 	"crypto/rand"
+	"time"
+	"bytes"
+	"encoding/binary"
 	"encoding/base64"
 	"encoding/hex"
 	"golang.org/x/crypto/argon2"
@@ -49,6 +52,29 @@ func GenerateGuid() (string, error) {
 	guidString := hexString[0:8] + "-" + hexString[8:12] + "-" + hexString[12:16] + "-" + hexString[16:20] + "-" + hexString[20:32]
 
 	return guidString, err
+}
+
+func GenerateSgi() string {
+
+	tNowMsec := time.Now().UnixNano() / 1e6
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, tNowMsec)
+	var bytestr string
+	if err == nil {
+		byteArray := buf.Bytes()
+
+		// Extract the lower 6 bytes of the timestamp byte array value
+		lower6Bytes := byteArray[:6]
+		rand4bytes,_ := GenerateRandomBytes(4)
+		finalbytes := append([]byte(lower6Bytes),rand4bytes...)
+		bytestr = B64Encode(finalbytes)
+
+	} else {
+		rand10bytes,_ := GenerateRandomBytes(10)
+		bytestr = B64Encode(rand10bytes)
+	}
+
+	return bytestr
 }
 
 func MD5SumHex(data []byte) string {

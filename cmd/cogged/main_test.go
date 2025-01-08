@@ -2,7 +2,7 @@ package main
 
 // docker pull dgraph/standalone:v22.0.2
 // docker run -it --rm --net=dbridge dgraph/standalone:v22.0.2
-//  export COGGED_TEST_DB_HOST=10.20.0.4 ; go test
+//  export COGGED_TEST_DB_HOST=10.20.0.4 ; cd cmd/cogged ; go test
 
 import (
 	"os"
@@ -18,6 +18,7 @@ import (
 	svc "cogged/services"
 	req "cogged/requests"
 	res "cogged/responses"
+	state "cogged/state"
 )
 
 
@@ -143,6 +144,10 @@ func CreateNode(
 
 func TestDefaultHandler(t *testing.T) {
 	testenv := setupTestEnvironment()
+
+	state.UsmInit()
+	state.UsmRun()
+
 	dh := CreateDefaultHandler(testenv.Config, testenv.DB, testenv.SecretKey)
 
 	// unauthenticated request to /health/status should return 200
@@ -361,6 +366,20 @@ func TestDefaultHandler(t *testing.T) {
 
 		}
 
+		//check user1 shared chat with user 2
+		{
+			rr := makeRequest(t, dh, inputData, "GET", "/graph/sharedwith/"+chatWithBobAD, bearerTokenUser1, http.StatusOK)
+			pr(t, dump(rr),nil)
+
+			var result res.CoggedResponse
+			err := json.Unmarshal(rr.Body.Bytes(), &result)
+			if err != nil {
+				t.Errorf("error decoding JSON response: %v", err)
+			}
+			pr(t, dump(result),nil)
+
+		}
+
 		chatWithBobADForBob := ""
 		// user2 query shared nodes
 		{
@@ -411,6 +430,8 @@ func TestDefaultHandler(t *testing.T) {
 
 	}
 
+	sgitest := sec.GenerateSgi()
+	fmt.Println("sgitest: "+sgitest)
 
 }
 

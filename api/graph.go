@@ -38,6 +38,17 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 			cr := h.Database.QueryWithOptions(r, svc.NODENODE)
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
+		case "GET sharedwith":
+			ud.RequiredPermissions = "s"
+			tn := cm.AuthzDataUnpackADString(param, *ud.UAD, ud.RequiredPermissions)
+			if tn == nil {
+				return "", &APIError{Info: "cannot view users this node ID is shared with", StatusCode: 400}
+			}
+			existingNodeUid := (*tn).Uid
+
+			cr,_ := h.Database.QueryUsersThatNodeIsSharedWith(existingNodeUid)
+			return MarshalJSON[res.CoggedResponse](cr, uad), nil
+
 		case "PATCH nodes":
 			ud.RequiredPermissions = "w"
 			r := &req.UpdateNodesRequest{}
@@ -54,10 +65,18 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 				return "", &APIError{Info: "invalid create nodes parent ID", StatusCode: 400}
 			}
 			existingNodeUid := (*tn).Uid
+			existingNodeSgi := (*tn).Sgi
 
 			r := &req.CreateNodesRequest{}
 			if berr := req.BindToRequest[req.CreateNodesRequest](body, r, ud); berr != nil {
 				return "", &APIError{Info: berr.Error(), StatusCode: 400}
+			}
+
+			var sgiForNewNodes string
+			if r.ResetSgi {
+				sgiForNewNodes = sec.GenerateSgi()
+			} else {
+				sgiForNewNodes = *existingNodeSgi
 			}
 
 			newnodes := *r.Nodes
@@ -66,10 +85,11 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 
 			nodeOwnerUid := uid
 			
-			// do some further validation of UIDs (Validate() has alreday checked whether UIDs are non-empty and start with $)
+			// do some further processing and validation of UIDs (Validate() has alreday checked whether UIDs are non-empty and start with $)
         	// and figure out if any of the new nodes form a subgraph
 			for _, n := range newnodes {
 				(*n).Owner = cm.NewGraphUser(nodeOwnerUid)
+				(*n).Sgi = &sgiForNewNodes
 				nOE := (*n).OutEdges
 				if nOE != nil && len(*nOE) > 0 {
 					for i, e := range *nOE {
@@ -96,7 +116,8 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 			}
 
 			if !atLeastOneNewNodeIsChildOfExistingNode {
-				return "", &APIError{Info: "at least one node must not have an inlink from another node in the new nodes list", StatusCode: 400}
+				//return "", &APIError{Info: "at least one node must not have an inlink from another node in the new nodes list", StatusCode: 400}
+				svc.StoreNodeOutgoingEdgeData(&newEdges, existingNodeUid, (*newnodes[0]).Uid)
 			}
 
 			for _, e := range newEdges {
@@ -107,6 +128,7 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 		case "PUT edges":
+			//note: permissions are checked in EdgesRequest.AuthzDataUnpack()
 			r := req.EdgesRequest{}
 			if berr := req.BindToRequest[req.EdgesRequest](body, &r, ud); berr != nil {
 				return "", &APIError{Info: berr.Error(), StatusCode: 400}
@@ -115,6 +137,7 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 		case "PATCH edges":
+			//note: permissions are checked in EdgesRequest.AuthzDataUnpack()
 			r := req.EdgesRequest{}
 			if berr := req.BindToRequest[req.EdgesRequest](body, &r, ud); berr != nil {
 				return "", &APIError{Info: berr.Error(), StatusCode: 400}

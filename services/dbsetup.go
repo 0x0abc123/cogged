@@ -21,6 +21,7 @@ i: bool .
 d: bool .
 s: bool .
 e: [uid] @reverse .
+sgi: string @index(hash) .
 ty: string @index(hash) .
 id: string @index(trigram, term) .
 p: string @index(hash) .
@@ -49,6 +50,7 @@ type U {
 
 type N {
     own
+    sgi
     r
     w
     o

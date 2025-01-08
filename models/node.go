@@ -4,6 +4,7 @@ import (
 	"time"
 	"strings"
 	sec "cogged/security"
+	state "cogged/state"
 )
 
 type NodePtrDictionary map[string]*GraphNode
@@ -22,6 +23,7 @@ type GraphNode struct {
 	PermShare		*bool		`json:"s,omitempty"`
 	Id				*string		`json:"id,omitempty"`
 	Type			*string		`json:"ty,omitempty"`
+	Sgi			*string		`json:"sgi,omitempty"`
 	PrivateData		*string		`json:"p,omitempty"`
 	String1			*string		`json:"s1,omitempty"`
 	String2			*string		`json:"s2,omitempty"`
@@ -71,12 +73,14 @@ func (n *GraphNode) ConvertNullBoolFieldsToFalse() {
 func GraphNodeFromUnpackedAD(adStr string) *GraphNode {
 	if adStr != "" {
 		parts := strings.Split(adStr,".")
-		if len(parts) == 3 {
+		if len(parts) == 4 {
 			uid := parts[0]
 			own := parts[1]
-			perms := parts[2]
+			sgi := parts[2]
+			perms := parts[3]
 			n := NewGraphNodeJustUID(uid)
 			n.Owner = &GraphUser{GraphBase: GraphBase{Uid: own}}
+			n.Sgi = &sgi
 			t := true
 			if strings.Contains(perms,"r") { n.PermRead = &t }
 			if strings.Contains(perms,"w") { n.PermWrite = &t }
@@ -101,7 +105,8 @@ func GraphNodeFromAD(packedAuthzData, key string) *GraphNode {
 func AuthzDataUnpackADString(ads string, uad sec.UserAuthData, permsRequired string) *GraphNode {
 	tmpNode := GraphNodeFromAD(ads, uad.SecretKey)
 	if tmpNode != nil {
-		if (uad.Uid == (*tmpNode).Owner.Uid || uad.Role == sec.SYS_ROLE || tmpNode.HasRequiredPermissions(permsRequired)) {
+		if (uad.Uid == (*tmpNode).Owner.Uid || uad.Role == sec.SYS_ROLE ||
+			(state.UsmUserCanAccessSgi(uad.Uid, *tmpNode.Sgi) && tmpNode.HasRequiredPermissions(permsRequired))) {
 			return tmpNode
 		}
 	}
@@ -110,11 +115,18 @@ func AuthzDataUnpackADString(ads string, uad sec.UserAuthData, permsRequired str
 
 
 func AuthzDataUnpackADStringSlice(adSlice *[]string, uad sec.UserAuthData, permsRequired string) bool {
+	return AuthzDataUnpackADStringSlicePlusNodes(adSlice, nil, uad, permsRequired)
+}
+
+func AuthzDataUnpackADStringSlicePlusNodes(adSlice *[]string, outNodes *[]*GraphNode, uad sec.UserAuthData, permsRequired string) bool {
 	if adSlice != nil && len(*adSlice) > 0 {
 		for i, ads := range *adSlice {
 			tmpNode := AuthzDataUnpackADString(ads, uad, permsRequired)
 			if tmpNode != nil {
 				(*adSlice)[i] = (*tmpNode).Uid
+				if outNodes != nil {
+					(*outNodes) = append(*outNodes,tmpNode)
+				}
 				continue
 			}
 			return false
@@ -136,7 +148,7 @@ func AuthzDataUnpackNodeSlice(nodeSlice *[]*GraphNode, uad sec.UserAuthData, per
 						AuthzFieldsAreEqual(n, tmpNode) && 
 					    (uad.Uid == (*tmpNode).Owner.Uid || 
 						 uad.Role == sec.SYS_ROLE || 
-						 tmpNode.HasRequiredPermissions(permsRequired))) {
+						 (state.UsmUserCanAccessSgi(uad.Uid, *tmpNode.Sgi) && tmpNode.HasRequiredPermissions(permsRequired)))) {
 						continue
 					}
 				}
@@ -159,6 +171,7 @@ func NewGraphNodeJustOwnerAndPerms(origNode *GraphNode) *GraphNode {
 	if origNode.Owner != nil {
 		newNode.Owner = origNode.Owner
 	}
+	newNode.Sgi = origNode.Sgi
 	newNode.PermRead = origNode.PermRead
 	newNode.PermWrite = origNode.PermWrite
 	newNode.PermOutEdge = origNode.PermOutEdge
@@ -189,6 +202,10 @@ func (n *GraphNode) AuthzDataPack(uad *sec.UserAuthData) {
 	ad := n.Uid + "."
 
 	if n.Owner != nil { ad += (*n.Owner).Uid }
+
+	ad += "."
+
+	if n.Sgi != nil { ad += *n.Sgi }
 
 	ad += "."
 
@@ -253,6 +270,7 @@ func AuthzFieldsAreEqual(n1, n2 *GraphNode) bool {
 			n1.Owner != nil &&
 			n2.Owner != nil &&
 			(*n1.Owner).Uid == (*n2.Owner).Uid &&
+			*n1.Sgi == *n2.Sgi &&
 			*n1.PermRead == *n2.PermRead &&
 			*n1.PermWrite == *n2.PermWrite &&
 			*n1.PermOutEdge == *n2.PermOutEdge &&

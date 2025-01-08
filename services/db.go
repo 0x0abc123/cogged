@@ -33,6 +33,7 @@ const (
 	NODENODE	EdgeType = iota
 	USERNODE
 	USERSHARE
+	USERSHAREDWITH
 )
 
 type UpdateType int
@@ -313,14 +314,19 @@ func constructQueryStringAndAddVars(clause req.QueryRequestClause, queryvars *ma
 		retval = "(" + strings.Join(clStrings, opstr) + ")"
 
 	} else {
+		op := renderOp(clause.Op)
+		field := renderField(clause.Field)
 		clVal := clause.Val
 		if clVal == "" {
 			clVal = "0"
 		}
+		if field == "m" && clVal == "0" {
+			epoch := time.Unix(0, 0)
+			clVal = fmt.Sprintf("%s",epoch)
+		}
+
 		tmpHash := sec.MD5SumHex([]byte(clVal))
 		valStr := fmt.Sprintf("$vv%s",tmpHash[:20])
-		op := renderOp(clause.Op)
-		field := renderField(clause.Field)
 		
 		if op == OP_TEXTSEARCH {
 			clVal = strings.TrimSpace(clVal)
@@ -372,6 +378,8 @@ func getEdgePredicateName(edgeType EdgeType) string {
 			return "nodes"
 		case USERSHARE:
 			return "shr"
+		case USERSHAREDWITH:
+			return "~shr"
 		default:
 			return ""
 	}
@@ -406,7 +414,7 @@ func renderFields(fields []string) string {
 	for _,field := range fields {
 		if allowedFields[field] {
 			if field == "e" {
-				tmpV = append(tmpV, field+" {uid own {uid} r w o i d s}")
+				tmpV = append(tmpV, field+" {uid own {uid} sgi r w o i d s}")
 			} else {
 				tmpV = append(tmpV, field)
 			}
@@ -502,7 +510,7 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 	}
 	query += `  @filter(__FILTERS__)
 			{
-				uid own {uid} r w o i d s __FIELDS__
+				uid own {uid} sgi r w o i d s __FIELDS__
 			}
 		}`
 
@@ -887,6 +895,38 @@ func (db *DB) QueryUserByUid(userUid string, internalQuery bool) (*res.UserRespo
 	}
 	user := (*usersReturned)[0]
 	resp := res.UserResponseFromUser(user)
+	return resp, nil
+}
+
+func (db *DB) QueryUsersThatNodeIsSharedWith(nodeUid string) (*res.CoggedResponse, error) {
+	vars := map[string]string{
+	  "$nodeid": SanitiseUID(nodeUid),
+	}
+
+	query := `
+	  query q($nodeid: string) {
+		var(func: uid($nodeid)) @recurse(depth: 1) 	{
+		NID as uid
+		`+getEdgePredicateName(USERSHAREDWITH)+`
+		}
+
+		qr(func: uid(NID)) @filter(type(U)) {
+		uid
+		un
+		role
+		}
+	}`
+
+	sp, err := db.Query(query, &vars)
+	if err != nil {
+		return res.CoggedResponseFromError("DB query failed"), err
+	}
+	usersReturned := SliceFromResultJSON[cm.GraphUser](sp)
+	if len(*usersReturned) < 1 {
+		return res.CoggedResponseFromError("no result"), err
+	}
+
+	resp := res.CoggedResponseFromUsers(usersReturned)
 	return resp, nil
 }
 

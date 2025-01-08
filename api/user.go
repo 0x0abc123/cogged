@@ -6,6 +6,7 @@ import (
 	req "cogged/requests"
 	res "cogged/responses"
 	cm "cogged/models"
+	state "cogged/state"
 )
 
 type UserAPI struct {
@@ -22,6 +23,40 @@ func NewUserAPI(config *svc.Config, db *svc.DB) *UserAPI {
 	return a
 }
 
+func AllowListSharedSgis(uid string, nl []*cm.GraphNode) {
+	UpdateAllowListSharedSgis(true, uid, nl)
+}
+
+func RevokeSharedSgis(uid string, nl []*cm.GraphNode) {
+	UpdateAllowListSharedSgis(false, uid, nl)
+}
+
+func UpdateAllowListSharedSgis(allow bool, uid string, nl []*cm.GraphNode) {
+	sgiSet := make(map[string]bool)
+
+	for _, node := range nl {
+		owner := node.Owner
+		if (owner!= nil && owner.Uid == uid) {
+			continue
+		}
+		if *node.PermRead && node.Sgi != nil {
+			sgiSet[*node.Sgi] = true
+		}
+	}
+
+	sgiList := ""
+	for key, _ := range sgiSet {
+		sgiList += key + ","
+	}
+
+	if sgiList != "" {
+		if allow {
+			state.UsmUserAllowlistSgi(uid, sgiList)
+		} else {
+			state.UsmUserRevokeSgi(uid, sgiList)
+		}
+	}
+}
 
 func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAuthData) (string, error) {
 	ud := req.UnpackData{ UAD: uad }
@@ -35,12 +70,14 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 			if berr := req.BindToRequest[req.UserNodeRequest](body, &r, ud); berr != nil {
 				return "", &APIError{Info: berr.Error(), StatusCode: 400}
 			}
+			ts := sec.GenerateSgi()
+			r.Node.Sgi = &ts
 			cr,_ := h.Database.UpsertUserNode(r.Node, uid)
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 		case "POST nodes":
 			// this should normally require "r" permission (ud.RequiredPermissions = "r")
-			// if a node has been shared with another user, it is implied that they can read without explicit PermRead set
+			// but if a node has been shared with another user, it is implied that they can read without explicit PermRead set
 			var edgeType svc.EdgeType
 			switch param {
 			case "shared":
@@ -58,6 +95,9 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 			r.RootQuery = nil
 			r.Depth = 1
 			cr := h.Database.QueryWithOptions(&r, edgeType)
+			if param == "shared" && !uad.IsAdmin() {
+				AllowListSharedSgis(uad.Uid, cr.ResultNodes)
+			}
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 		case "PUT share":
@@ -78,7 +118,10 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 				}
 			} 
 
-			cr,_ := h.Database.UpdateUserShareEdges(r.Nodes, &usersToShareWith, svc.ADD) 
+			cr,_ := h.Database.UpdateUserShareEdges(r.Nodes, &usersToShareWith, svc.ADD)
+			for _,tu := range usersToShareWith {
+				AllowListSharedSgis(tu, *r.UnpackedNodes)
+			}
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 		case "PATCH share":
@@ -100,6 +143,9 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 			} 
 
 			cr,_ := h.Database.UpdateUserShareEdges(r.Nodes, &usersToShareWith, svc.DELETE) 
+			for _,tu := range usersToShareWith {
+				RevokeSharedSgis(tu, *r.UnpackedNodes)
+			}
 			return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 		case "GET name":
