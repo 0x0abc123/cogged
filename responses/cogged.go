@@ -22,7 +22,9 @@ func (resp *CoggedResponse) AuthzDataPack(uad *sec.UserAuthData) {
 		filteredNodes := []*cm.GraphNode{}
 		for _, node := range resp.ResultNodes {
 			owner := node.Owner
-			if (owner!= nil && owner.Uid == uad.Uid) || uad.IsAdmin() || (node.Sgi != nil && state.UsmUserCanAccessSgi(uad.Uid, *node.Sgi) && *node.PermRead) {
+			if (owner!= nil && owner.Uid == uad.Uid) ||
+			    uad.IsAdmin() ||
+			    (node.Sgi != nil && state.UsmUserCanAccessSgi(uad.Uid, *node.Sgi) && node.PermRead != nil && *node.PermRead) {
 				node.AuthzDataPack(uad)
 				filteredNodes = append(filteredNodes, node)
 			}
