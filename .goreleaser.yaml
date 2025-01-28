@@ -10,7 +10,7 @@ builds:
     # Notice: when used with `gomod.proxy`, this must be a package.
     #
     # Default: `.`.
-    main: ./cmd/cogged
+    main: ./cmd/cogged/main.go
 
     # Binary name.
     # Can be a path (e.g. `bin/app`) to wrap the binary in a directory.
@@ -61,7 +61,7 @@ builds:
     # - `c-shared`
     # - `c-archive`
     # - `pie`
-    buildmode: c-shared
+    #buildmode: c-shared
 
     # Custom build tags templates.
     # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Build_constraints
