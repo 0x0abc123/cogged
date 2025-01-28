@@ -114,7 +114,7 @@ builds:
     # Default: "go".
     # Templates: allowed.
     # Since: v2.5.
-    tool: "go1.20.14"
+    #tool: "go1.20.14"
 
     # Sets the command to run to build.
     # Can be useful if you want to build tests, for example,
