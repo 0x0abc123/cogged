@@ -1,0 +1,214 @@
+builds:
+  # You can have multiple builds defined as a yaml list
+  - #
+    # ID of the build.
+    #
+    # Default: Project directory name.
+    id: "cogged"
+
+    # Path to main.go file or main package.
+    # Notice: when used with `gomod.proxy`, this must be a package.
+    #
+    # Default: `.`.
+    main: ./cmd/cogged
+
+    # Binary name.
+    # Can be a path (e.g. `bin/app`) to wrap the binary in a directory.
+    #
+    # Default: Project directory name.
+    binary: cogged
+
+    # Custom flags.
+    #
+    # Templates: allowed.
+    flags:
+      - -buildvcs=false
+      - -a
+
+    # Custom asmflags.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
+    # and https://pkg.go.dev/cmd/asm
+    #
+    # Templates: allowed.
+    #asmflags:
+    #  - -D mysymbol
+    #  - all=-trimpath={{.Env.GOPATH}}
+
+    # Custom gcflags.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
+    # and https://pkg.go.dev/cmd/compile
+    #
+    # Templates: allowed.
+    #gcflags:
+    #  - all=-trimpath={{.Env.GOPATH}}
+    #  - ./dontoptimizeme=-N
+
+    # Custom ldflags.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies
+    # and https://pkg.go.dev/cmd/link
+    #
+    # Default: '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser'.
+    # Templates: allowed.
+    ldflags:
+      - -extldflags "-static"
+    #  - -s -w -X main.build={{.Version}} -extldflags "-static"
+    #  - ./usemsan=-msan
+
+    # Custom Go build mode.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Build_modes
+    #
+    # Valid options:
+    # - `c-shared`
+    # - `c-archive`
+    # - `pie`
+    buildmode: c-shared
+
+    # Custom build tags templates.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Build_constraints
+    #tags:
+    #  - osusergo
+    #  - netgo
+    #  - static_build
+    #  - feature
+
+    # Custom environment variables to be set during the builds.
+    # Invalid environment variables will be ignored.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Environment_variables
+    #
+    # Default: os.Environ() ++ env config section.
+    # Templates: allowed.
+    env:
+      - CGO_ENABLED=0
+      # complex, templated envs:
+    #  - >-
+    #    {{- if eq .Os "darwin" }}
+    #      {{- if eq .Arch "amd64"}}CC=o64-clang{{- end }}
+    #      {{- if eq .Arch "arm64"}}CC=aarch64-apple-darwin20.2-clang{{- end }}
+    #    {{- end }}
+    #    {{- if eq .Os "windows" }}
+    #      {{- if eq .Arch "amd64" }}CC=x86_64-w64-mingw32-gcc{{- end }}
+    #    {{- end }}
+
+    # GOOS list to build for.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Environment_variables
+    #
+    # Default: [ 'darwin', 'linux', 'windows' ].
+    goos:
+      - darwin
+      - linux
+      - windows
+
+    # GOARCH to build for.
+    # For more info refer to: https://pkg.go.dev/cmd/go#hdr-Environment_variables
+    #
+    # Default: [ '386', 'amd64', 'arm64' ].
+    goarch:
+      - amd64
+      - arm64
+      #- arm
+
+
+    # Set a specific go binary to use when building.
+    # It is safe to ignore this option in most cases.
+    #
+    # Default: "go".
+    # Templates: allowed.
+    # Since: v2.5.
+    tool: "go1.20.14"
+
+    # Sets the command to run to build.
+    # Can be useful if you want to build tests, for example,
+    # in which case you can set this to "test".
+    # It is safe to ignore this option in most cases.
+    #
+    # Default: build.
+    #command: test
+
+    # Set the modified timestamp on the output binary, typically
+    # you would do this to ensure a build was reproducible.
+    # Pass an empty string to skip modifying the output.
+    #
+    # Templates: allowed.
+    #mod_timestamp: "{{ .CommitTimestamp }}"
+
+    # Hooks can be used to customize the final binary,
+    # for example, to run generators.
+    #
+    # Templates: allowed.
+    #hooks:
+    #  pre: rice embed-go
+    #  post: ./script.sh {{ .Path }}
+
+    # If true, skip the build.
+    # Useful for library projects.
+    #
+    # Templates: allowed (Since: v2.3).
+    #skip: false
+
+    # By default, GoReleaser will create your binaries inside
+    # `dist/${BuildID}_${BuildTarget}`, which is a unique directory per build
+    # target in the matrix.
+    # You can set subdirs within that directory using the `binary` property.
+    #
+    # However, if for some reason you don't want that unique directory to be
+    # created, you can set this property.
+    # If you do, you are responsible for keeping different builds from
+    # overriding each other.
+    #
+    # Templates: allowed (Since: v2.3).
+    #no_unique_dist_dir: true
+
+    # By default, GoReleaser will check if the main filepath has a main
+    # function.
+    # This can be used to skip that check, in case you're building tests, for
+    # example.
+    #no_main_check: true
+
+    # Path to project's (sub)directory containing Go code.
+    # This is the working directory for the Go build command(s).
+    # If dir does not contain a `go.mod` file, and you are using `gomod.proxy`,
+    # produced binaries will be invalid.
+    # You would likely want to use `main` instead of this.
+    #
+    # Default: '.'.
+    dir: .
+
+    # Builder allows you to use a different build implementation.
+    # Valid options are: `go`, `rust`, `zig`, and `prebuilt` (pro-only).
+    #
+    # Default: 'go'.
+    builder: go
+
+    # Overrides allows to override some fields for specific targets.
+    # This can be specially useful when using CGO.
+    #
+    # Attention: you need to set at least goos and goarch, otherwise it won't
+    # match anything.
+    #overrides:
+    #  - goos: darwin
+    #    goarch: amd64
+    #    goamd64: v1
+    #    goarm: ""
+    #    goarm64: ""
+    #    gomips: ""
+    #    go386: ""
+    #    goriscv64: ""
+    #    goppc64: ""
+    #    ldflags:
+    #      - '-extldflags "-static"'
+    #    tags:
+    #      - bar
+    #    asmflags:
+    #      - foobar
+    #    gcflags:
+    #      - foobaz
+    #    env:
+    #      - CGO_ENABLED=0
+
+    # Set a specific go binary to use when building.
+    # It is safe to ignore this option in most cases.
+    #
+    # Default: "go".
+    # Templates: allowed.
+    # Deprecated: use `tool` instead.
+    #gobinary: "go1.13.4"
