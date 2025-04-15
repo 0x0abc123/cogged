@@ -48,8 +48,8 @@ const (
 	OP_EQ string = "eq"
 	OP_GT string = "gt"
 	OP_LT string = "lt"
-	OP_GTE string = "gte"
-	OP_LTE string = "lte"
+	OP_GTE string = "ge"
+	OP_LTE string = "le"
 
 	MAX_QUERY_RECURSE_DEPTH uint = 20
 )

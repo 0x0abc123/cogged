@@ -41,7 +41,7 @@ func (h *DefaultHandler) ErrorResponse(code int, message string, w http.Response
 
 func (h *DefaultHandler) OkResponse(jsonString string, w http.ResponseWriter) {
     w.Header().Set("Content-Type", "application/json; charset=utf-8")
-    fmt.Fprint(w, jsonString)
+    fmt.Fprintf(w, jsonString)
 }
 
 
