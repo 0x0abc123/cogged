@@ -8,7 +8,8 @@ to understand the packages and the graph-based access-control model.
 
 - Go (see the `go` directive in [`go.mod`](./go.mod) for the minimum version).
 - Docker — only needed to run the **integration** tests (testcontainers boots Dgraph for you).
-- Optional: `golangci-lint` for the advisory lint pass.
+- `golangci-lint` **v2** (the lint pass is enforced in CI; v1 cannot analyze this module —
+  its Go build version is older than the `go.mod` target). Install: `golangci-lint` v2.x.
 
 ## Development loop
 
@@ -65,8 +66,8 @@ PR:
 
 - **build-test** (blocking): `go build`, `go vet`, `go test -race ./...` (unit only), and a
   `gofmt` check that fails on any unformatted file.
-- **lint** (advisory): `golangci-lint` with `only-new-issues`, so it flags problems your change
-  introduces without drowning in legacy findings.
+- **lint** (blocking): `golangci-lint` v2 (errcheck, govet, ineffassign, misspell, staticcheck,
+  unused). The tree is clean, so any new finding fails the build.
 - **integration** (advisory for now): `go test -tags=integration ./...` with Docker.
 
 ## Claude Code

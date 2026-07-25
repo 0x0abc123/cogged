@@ -253,7 +253,6 @@ func (n *GraphNode) AuthzDataPack(uad *sec.UserAuthData) {
 			e.AuthzDataPack(uad)
 		}
 	}
-	return
 }
 
 func (n *GraphNode) HasRequiredPermissions(rp string) bool {

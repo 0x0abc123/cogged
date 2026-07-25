@@ -178,7 +178,7 @@ func NewDBWithClient(conf *Config, client DgraphClient) *DB {
 }
 
 func getDgraphClient(dgraphAddress string) (*dgo.Dgraph, CancelFunc) {
-	conn, err := grpc.Dial(dgraphAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(dgraphAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err == nil {
 		dc := api.NewDgraphClient(conn)
 		dg := dgo.NewDgraphClient(dc)
@@ -351,7 +351,7 @@ func constructQueryStringAndAddVars(clause req.QueryRequestClause, queryvars *ma
 		}
 		if field == "m" && clVal == "0" {
 			epoch := time.Unix(0, 0)
-			clVal = fmt.Sprintf("%s", epoch)
+			clVal = epoch.String()
 		}
 
 		tmpHash := sec.MD5SumHex([]byte(clVal))
@@ -413,7 +413,7 @@ func getEdgePredicateName(edgeType EdgeType) string {
 
 func renderQueryVarsString(vars *map[string]string) string {
 	tmpV := []string{}
-	for key, _ := range *vars {
+	for key := range *vars {
 		if strings.HasPrefix(key, "$vv") {
 			tmpV = append(tmpV, key)
 		}
@@ -479,15 +479,13 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 		query q(__QVARS__) {
 			qr(func:  __ROOTQUERY__)
 		`
-		query = strings.Replace(query, "__ROOTQUERY__", constructQueryStringAndAddVars(*q.RootQuery, &vars), -1)
+		query = strings.ReplaceAll(query, "__ROOTQUERY__", constructQueryStringAndAddVars(*q.RootQuery, &vars))
 
 	} else {
 		recurseDepth := q.Depth
-		switch {
-		case recurseDepth > MAX_QUERY_RECURSE_DEPTH:
+		// recurseDepth is a uint, so it can never be negative; only clamp the upper bound.
+		if recurseDepth > MAX_QUERY_RECURSE_DEPTH {
 			recurseDepth = MAX_QUERY_RECURSE_DEPTH
-		case recurseDepth < 0:
-			recurseDepth = 0
 		}
 
 		//dgraph expects a string of uids like this: "[0x1, 0x2, 0x3]"
@@ -520,7 +518,7 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 				}
 			  
 				qr(func: uid(NID))`
-			query = strings.Replace(query, "__EDGETYPE__", getEdgePredicateName(et), -1)
+			query = strings.ReplaceAll(query, "__EDGETYPE__", getEdgePredicateName(et))
 		} else {
 			query = `query q($ids: string, __QVARS__) {
 				qr(func: uid($ids))`
@@ -528,7 +526,7 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 	}
 	if q.Filters == nil {
 		epoch := time.Unix(0, 0)
-		q.Filters = &req.QueryRequestClause{Field: "m", Op: "gt", Val: fmt.Sprintf("%s", epoch)}
+		q.Filters = &req.QueryRequestClause{Field: "m", Op: "gt", Val: epoch.String()}
 	}
 	query += `  @filter(__FILTERS__)
 			{
@@ -540,9 +538,9 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 	if len(q.Select) > 0 {
 		fields = renderFields(q.Select)
 	}
-	query = strings.Replace(query, "__FIELDS__", fields, -1)
-	query = strings.Replace(query, "__FILTERS__", constructQueryStringAndAddVars(*q.Filters, &vars), -1)
-	query = strings.Replace(query, "__QVARS__", renderQueryVarsString(&vars), -1)
+	query = strings.ReplaceAll(query, "__FIELDS__", fields)
+	query = strings.ReplaceAll(query, "__FILTERS__", constructQueryStringAndAddVars(*q.Filters, &vars))
+	query = strings.ReplaceAll(query, "__QVARS__", renderQueryVarsString(&vars))
 
 	sp, err := d.Query(query, &vars)
 	if err != nil {
@@ -784,8 +782,12 @@ deleteJson : json
 func (db *DB) UpdateEdges(utype UpdateType, nodeUids, srcUids, destUids *[]string) (*res.CoggedResponse, error) {
 	updateList := make([]cm.GraphNode, 0)
 
-	db.AddIncomingEdges(nodeUids, srcUids, &updateList, true)
-	db.AddOutgoingEdges(nodeUids, destUids, &updateList, true)
+	if err := db.AddIncomingEdges(nodeUids, srcUids, &updateList, true); err != nil {
+		return res.CoggedResponseFromError("DB operation failed"), err
+	}
+	if err := db.AddOutgoingEdges(nodeUids, destUids, &updateList, true); err != nil {
+		return res.CoggedResponseFromError("DB operation failed"), err
+	}
 
 	_, err := db.Mutate(updateList, utype)
 	if err != nil {
