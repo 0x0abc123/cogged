@@ -4,5 +4,5 @@
 package requests
 
 type Validater interface {
-	Validate() bool 
+	Validate() bool
 }

@@ -55,15 +55,16 @@ round-trip it through AuthzData verification.
 
 - Tabs for indentation; match the terse existing style.
 - Standard import aliases: `cm/svc/sec/req/res/state` (see any existing file).
-- New and changed files must be `gofmt` clean. The wider legacy tree is not yet fully formatted,
-  so CI reports formatting as advisory rather than failing on it — please don't add to the debt.
+- All code must be `gofmt` clean — CI fails on any unformatted file. Run `gofmt -w .` before
+  committing (the Claude Code PostToolUse hook does this automatically on save).
 
 ## Continuous integration
 
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs on every push to `main` and every
 PR:
 
-- **build-test** (blocking): `go build`, `go vet`, and `go test -race ./...` (unit only).
+- **build-test** (blocking): `go build`, `go vet`, `go test -race ./...` (unit only), and a
+  `gofmt` check that fails on any unformatted file.
 - **lint** (advisory): `golangci-lint` with `only-new-issues`, so it flags problems your change
   introduces without drowning in legacy findings.
 - **integration** (advisory for now): `go test -tags=integration ./...` with Docker.

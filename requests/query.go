@@ -6,26 +6,21 @@ import (
 	sec "cogged/security"
 )
 
-
 type QueryRequestClause struct {
-
-	And []QueryRequestClause	`json:"and,omitempty"`
-	Or []QueryRequestClause		`json:"or,omitempty"`
-	Field string				`json:"field,omitempty"`
-	Op string					`json:"op,omitempty"`
-	Val string					`json:"val,omitempty"`
+	And   []QueryRequestClause `json:"and,omitempty"`
+	Or    []QueryRequestClause `json:"or,omitempty"`
+	Field string               `json:"field,omitempty"`
+	Op    string               `json:"op,omitempty"`
+	Val   string               `json:"val,omitempty"`
 }
-
 
 type QueryRequest struct {
-
-	RootIDs		[]string	`json:"root_ids,omitempty"`
-	RootQuery	*QueryRequestClause	`json:"root_query,omitempty"`
-	Depth		uint		`json:"depth"`
-	Filters		*QueryRequestClause	`json:"filters,omitempty"`
-	Select		[]string	`json:"select,omitempty"`
+	RootIDs   []string            `json:"root_ids,omitempty"`
+	RootQuery *QueryRequestClause `json:"root_query,omitempty"`
+	Depth     uint                `json:"depth"`
+	Filters   *QueryRequestClause `json:"filters,omitempty"`
+	Select    []string            `json:"select,omitempty"`
 }
-
 
 func (req *QueryRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequired string) bool {
 	log.Debug("QueryRes AuthzDataUnpack", req)
@@ -39,7 +34,6 @@ func (req *QueryRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequir
 	}
 	return cm.AuthzDataUnpackADStringSlice(&req.RootIDs, uad, permissionsRequired)
 }
-
 
 func (req *QueryRequest) Validate() bool {
 	return true

@@ -4,7 +4,7 @@ import (
 	sec "cogged/security"
 )
 
-type HealthAPI struct {}
+type HealthAPI struct{}
 
 func NewHealthAPI() *HealthAPI {
 	return &HealthAPI{}

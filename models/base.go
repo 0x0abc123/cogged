@@ -9,10 +9,9 @@ type GraphBaser interface {
 }
 
 type GraphBase struct {
-	
-	Uid			string		`json:"uid"`
-	DgraphType	[]string	`json:"dgraph.type,omitempty"`
-	AuthzData	string		`json:"ad,omitempty"`
+	Uid        string   `json:"uid"`
+	DgraphType []string `json:"dgraph.type,omitempty"`
+	AuthzData  string   `json:"ad,omitempty"`
 }
 
 func (g *GraphBase) GetUid() string {

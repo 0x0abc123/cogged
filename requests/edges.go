@@ -6,12 +6,10 @@ import (
 )
 
 type EdgesRequest struct {
-
-	SubjectIds 		*[]string	`json:"subject_ids,omitempty"`
-	IncomingIds 	*[]string	`json:"incoming_ids,omitempty"`
-	OutgoingIds 	*[]string	`json:"outgoing_ids,omitempty"`
+	SubjectIds  *[]string `json:"subject_ids,omitempty"`
+	IncomingIds *[]string `json:"incoming_ids,omitempty"`
+	OutgoingIds *[]string `json:"outgoing_ids,omitempty"`
 }
-
 
 func (req *EdgesRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequired string) bool {
 	permissionsForSubjectNodes := ""
@@ -22,10 +20,9 @@ func (req *EdgesRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequir
 		permissionsForSubjectNodes += "o"
 	}
 	return (cm.AuthzDataUnpackADStringSlice(req.SubjectIds, uad, permissionsForSubjectNodes) &&
-			cm.AuthzDataUnpackADStringSlice(req.IncomingIds, uad, "o") &&
-			cm.AuthzDataUnpackADStringSlice(req.OutgoingIds, uad, "i"))	
+		cm.AuthzDataUnpackADStringSlice(req.IncomingIds, uad, "o") &&
+		cm.AuthzDataUnpackADStringSlice(req.OutgoingIds, uad, "i"))
 }
-
 
 func (req *EdgesRequest) Validate() bool {
 	return true

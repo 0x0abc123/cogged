@@ -1,21 +1,21 @@
 package security
 
 import (
-	"fmt"
-	"strings"
-	"errors"
-	"crypto/aes"
-	"crypto/md5"
-	"crypto/cipher"
-	"crypto/sha512"
-	"crypto/rand"
-	"time"
 	"bytes"
-	"encoding/binary"
-	"encoding/base64"
-	"encoding/hex"
-	"golang.org/x/crypto/argon2"
 	"cogged/log"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/md5"
+	"crypto/rand"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"golang.org/x/crypto/argon2"
+	"strings"
+	"time"
 )
 
 func B64Encode(input []byte) string {
@@ -25,7 +25,9 @@ func B64Encode(input []byte) string {
 
 func B64Decode(input string) []byte {
 	output, err := base64.RawURLEncoding.DecodeString(input)
-	if err != nil { log.Error("base64 decode",err) }
+	if err != nil {
+		log.Error("base64 decode", err)
+	}
 	return output
 }
 
@@ -65,12 +67,12 @@ func GenerateSgi() string {
 
 		// Extract the lower 6 bytes of the timestamp byte array value
 		lower6Bytes := byteArray[:6]
-		rand4bytes,_ := GenerateRandomBytes(4)
-		finalbytes := append([]byte(lower6Bytes),rand4bytes...)
+		rand4bytes, _ := GenerateRandomBytes(4)
+		finalbytes := append([]byte(lower6Bytes), rand4bytes...)
 		bytestr = B64Encode(finalbytes)
 
 	} else {
-		rand10bytes,_ := GenerateRandomBytes(10)
+		rand10bytes, _ := GenerateRandomBytes(10)
 		bytestr = B64Encode(rand10bytes)
 	}
 
@@ -100,21 +102,20 @@ func HashPassword(password string, saltBytes []byte) string {
 }
 
 func GeneratePasswordHash(password string) string {
-	saltBytes,_ := GenerateRandomBytes(16)
+	saltBytes, _ := GenerateRandomBytes(16)
 	return HashPassword(password, saltBytes) // <b64hash>$<b64salt>
 }
 
 // hash arg should be a string of the format: <b64hash>$<b64salt>
 func VerifyPasswordHash(storedHash, password string) bool {
-	hashParts := strings.Split(storedHash,"$")
+	hashParts := strings.Split(storedHash, "$")
 
 	if len(hashParts) < 2 {
 		return false
 	}
-	tryHash := HashPassword(password,B64Decode(hashParts[1]))
+	tryHash := HashPassword(password, B64Decode(hashParts[1]))
 	return tryHash == storedHash
 }
-
 
 // output format: <b64ciphertext_plus_aad>.<b64nonce>
 func AESGCMEncrypt(keyB64Str, plainText string) (string, error) {
@@ -128,12 +129,11 @@ func AESGCMEncrypt(keyB64Str, plainText string) (string, error) {
 		return "", err
 	}
 
-	nonceBytes,_ := GenerateRandomBytes(12)
+	nonceBytes, _ := GenerateRandomBytes(12)
 	cipherText := aesgcm.Seal(nil, nonceBytes, []byte(plainText), nil)
 
 	return B64Encode(cipherText) + "." + B64Encode(nonceBytes), nil
 }
-
 
 // ciphertext input format: <b64ciphertext_plus_aad>.<b64nonce>
 func AESGCMDecrypt(keyB64Str, cipherText string) (string, error) {
@@ -147,7 +147,7 @@ func AESGCMDecrypt(keyB64Str, cipherText string) (string, error) {
 		return "", err
 	}
 
-	cipherTextParts := strings.Split(cipherText,".")
+	cipherTextParts := strings.Split(cipherText, ".")
 
 	if len(cipherTextParts) < 2 {
 		return "", errors.New("invalid ciphertext string")
@@ -162,4 +162,3 @@ func AESGCMDecrypt(keyB64Str, cipherText string) (string, error) {
 
 	return string(plainText), nil
 }
-
