@@ -119,7 +119,10 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Debug("userauthdata", userAuthData)
 
-		if (*h.adminList)[routeGroup] && !userAuthData.IsAdmin() {
+		// Admin route groups require an authenticated admin. userAuthData can be nil here
+		// when an unauthenticated route is on the allowlist, so guard against a nil deref
+		// and deny rather than panic.
+		if (*h.adminList)[routeGroup] && (userAuthData == nil || !userAuthData.IsAdmin()) {
 			h.ErrorResponse(http.StatusUnauthorized, "", w, r)
 			return
 		}
