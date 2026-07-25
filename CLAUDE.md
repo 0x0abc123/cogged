@@ -5,11 +5,11 @@ Guidance for Claude Code when working in the **Cogged** repo.
 ## What this is
 
 Cogged is a lightweight Go framework for multitenant web/mobile backends, backed by the
-**Dgraph** graph database (v22.0.2). It provides authentication, a graph data schema, and
+**Dgraph** graph database (v25.3.1). It provides authentication, a graph data schema, and
 **graph-based cross-user access control**. Data is modelled as Directed Cyclic Graphs (DCGs);
 every node carries an owner and per-node permissions, and access is granted by sharing edges.
 
-- Module: `cogged` (see `go.mod`), Go 1.20.
+- Module: `cogged` (see `go.mod`), Go 1.26. Dgraph client: `github.com/dgraph-io/dgo/v250`.
 - Entry point / HTTP server: `cmd/cogged/main.go`.
 
 ## Package map

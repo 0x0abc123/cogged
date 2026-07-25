@@ -16,8 +16,8 @@ More detailed documentation in relation to the above points and that explains ho
 
 ## Requirements
 
-- Golang 1.20 or higher
-- Dgraph v22.0.2
+- Golang 1.26 or higher
+- Dgraph v25.3.1
 
 ### Dgraph
 
@@ -28,8 +28,8 @@ Install Dgraph binaries as per the guidance at https://dgraph.io/docs/deploy/ins
 This is the easier option for a quick start so you can play with Cogged or get involved in development:
 
 ```bash
-docker pull dgraph/standalone:v22.0.2
-docker run -it --rm --net=host dgraph/standalone:v22.0.2
+docker pull dgraph/standalone:v25.3.1
+docker run -it --rm --net=host dgraph/standalone:v25.3.1
 ```
 
 **Installing binaries:**
@@ -37,7 +37,7 @@ docker run -it --rm --net=host dgraph/standalone:v22.0.2
 Do this for a production environment:
 
 ```bash
-export DGRAPHVERSION=v22.0.2
+export DGRAPHVERSION=v25.3.1
 curl https://get.dgraph.io -sSf > dgraph.sh
 sed -i 's/--lru_mb 2048//g' dgraph.sh
 sed -i 's/grep -Fx/grep -F/g' dgraph.sh

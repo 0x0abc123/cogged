@@ -14,7 +14,7 @@ access-control model.
   `models/node.go`, crypto/tokens in `security`, DTO `Validate()`), and cover DB methods with the
   fake `DgraphClient` seam.
 - **Integration tests go behind `//go:build integration`** and use the `services/dbtest` helper,
-  which spins `dgraph/standalone:v22.0.2` via testcontainers and returns a connected `*svc.DB`
+  which spins `dgraph/standalone:v25.3.1` via testcontainers and returns a connected `*svc.DB`
   with cleanup. Share one container per package via `TestMain`.
 - Use table-driven subtests (`t.Run`). Prefer standard library only (`testing`); no assertion
   frameworks — the repo has none.

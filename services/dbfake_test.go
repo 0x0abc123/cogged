@@ -8,7 +8,7 @@ import (
 
 	req "cogged/requests"
 
-	"github.com/dgraph-io/dgo/v210/protos/api"
+	"github.com/dgraph-io/dgo/v250/protos/api"
 )
 
 // fakeClient is an in-memory DgraphClient that records what db.go sends it and

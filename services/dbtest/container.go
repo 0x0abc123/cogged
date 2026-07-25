@@ -15,7 +15,7 @@ import (
 
 // DgraphImage is the Dgraph standalone image used for integration tests.
 // Keep it in sync with the version the framework targets (README / go docs).
-const DgraphImage = "dgraph/standalone:v22.0.2"
+const DgraphImage = "dgraph/standalone:v25.3.1"
 
 // grpcPort is the Dgraph Alpha gRPC port; httpPort serves the health endpoint we wait on.
 const (

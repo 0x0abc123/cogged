@@ -19,17 +19,17 @@ import (
 	res "cogged/responses"
 	sec "cogged/security"
 
-	"github.com/dgraph-io/dgo/v210"
-	"github.com/dgraph-io/dgo/v210/protos/api"
+	"github.com/dgraph-io/dgo/v250"
+	"github.com/dgraph-io/dgo/v250/protos/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// go get -u -v github.com/dgraph-io/dgo/v210
+// go get -u -v github.com/dgraph-io/dgo/v250
 // go get -u -v google.golang.org/grpc
-// docker pull dgraph/standalone:v22.0.2
-// docker run -it --rm --net=dbridge dgraph/standalone:v22.0.2
-// https://dgraph.io/docs/v22.0/dql/clients/go/
+// docker pull dgraph/standalone:v25.3.1
+// docker run -it --rm --net=dbridge dgraph/standalone:v25.3.1
+// https://docs.dgraph.io/clients/go/
 
 type EdgeType int
 
@@ -177,30 +177,24 @@ func NewDBWithClient(conf *Config, client DgraphClient) *DB {
 	}
 }
 
-func getDgraphClient(dgraphAddress string) (*dgo.Dgraph, CancelFunc) {
-	conn, err := grpc.NewClient(dgraphAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err == nil {
-		dc := api.NewDgraphClient(conn)
-		dg := dgo.NewDgraphClient(dc)
-
-		return dg, func() {
-			if err := conn.Close(); err != nil {
-				log.Error("Closing connection", err)
-			}
-		}
-	}
-	log.Error("Failed trying to dial gRPC", nil)
-	return nil, func() {}
+func getDgraphClient(dgraphAddress string) (*dgo.Dgraph, error) {
+	// dgo v250 manages the gRPC connection internally; pass insecure transport for a
+	// plaintext (non-TLS) endpoint such as the standalone image used in tests.
+	return dgo.NewClient(
+		dgraphAddress,
+		dgo.WithGrpcOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
+	)
 }
 
 func (d *DB) Connect(connStr string) error {
 	log.Debug("DB Connect "+connStr, nil)
-	dc, cancelFunc := getDgraphClient(connStr)
-	if dc == nil {
-		return DBError{Info: "connect to DB failed"}
+	dg, err := getDgraphClient(connStr)
+	if err != nil {
+		log.Error("connecting to Dgraph", err)
+		return DBError{Info: "connect to DB failed: " + err.Error()}
 	}
-	d.client = &dgoClientAdapter{dg: dc}
-	d.cCancel = cancelFunc
+	d.client = &dgoClientAdapter{dg: dg}
+	d.cCancel = func() { dg.Close() }
 	return nil
 }
 
