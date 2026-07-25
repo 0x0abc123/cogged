@@ -21,8 +21,6 @@ import (
 
 	"github.com/dgraph-io/dgo/v250"
 	"github.com/dgraph-io/dgo/v250/protos/api"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 // go get -u -v github.com/dgraph-io/dgo/v250
@@ -154,10 +152,9 @@ func NewDB(conf *Config) *DB {
 	}
 
 	// create Dgraph client
-	dbURL := fmt.Sprintf("%s:%s", newDB.Configuration.Get("db.host"), newDB.Configuration.Get("db.port"))
-	err := newDB.Connect(dbURL)
+	err := newDB.Connect(dgraphConnString(newDB.Configuration))
 	if err != nil {
-		panic("Could not connect to Dgraph at " + dbURL)
+		panic("Could not connect to Dgraph")
 	}
 	newDB.MaybeUpdateSchema()
 
@@ -177,17 +174,27 @@ func NewDBWithClient(conf *Config, client DgraphClient) *DB {
 	}
 }
 
-func getDgraphClient(dgraphAddress string) (*dgo.Dgraph, error) {
-	// dgo v250 manages the gRPC connection internally; pass insecure transport for a
-	// plaintext (non-TLS) endpoint such as the standalone image used in tests.
-	return dgo.NewClient(
-		dgraphAddress,
-		dgo.WithGrpcOption(grpc.WithTransportCredentials(insecure.NewCredentials())),
-	)
+// dgraphConnString returns the dgo connection string to connect with. A full
+// "db.connstr" is used verbatim when set (e.g. a Dgraph Cloud URL, or one carrying
+// ACL credentials / a TLS sslmode); otherwise a plaintext local endpoint is
+// synthesized from db.host/db.port. See https://docs.dgraph.io/clients/go/ for the
+// connection-string format (dgraph://host:port?sslmode=disable|require|verify-ca...).
+func dgraphConnString(conf *Config) string {
+	if cs := conf.Get("db.connstr"); cs != "" {
+		return cs
+	}
+	return fmt.Sprintf("dgraph://%s:%s?sslmode=disable", conf.Get("db.host"), conf.Get("db.port"))
+}
+
+func getDgraphClient(connStr string) (*dgo.Dgraph, error) {
+	// dgo v250 parses the endpoint, TLS mode and any ACL credentials from the
+	// connection string; it manages the underlying gRPC connection internally.
+	return dgo.Open(connStr)
 }
 
 func (d *DB) Connect(connStr string) error {
-	log.Debug("DB Connect "+connStr, nil)
+	// Don't log connStr: it may carry ACL credentials.
+	log.Debug("DB Connect", nil)
 	dg, err := getDgraphClient(connStr)
 	if err != nil {
 		log.Error("connecting to Dgraph", err)

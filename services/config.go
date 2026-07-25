@@ -18,6 +18,10 @@ import (
 		"secret.mode": "default",
 		"auth.tokenexpiry": "600"
 	}
+
+	Dgraph connection: by default a plaintext endpoint is built from db.host/db.port. To
+	use TLS, ACL credentials or a Dgraph Cloud endpoint, set a full dgo connection string
+	in "db.connstr" (e.g. "dgraph://host:9080?sslmode=verify-ca"), which takes precedence.
 */
 
 const CONFIG_FILE_NAME string = "cogged.conf.json"
