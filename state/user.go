@@ -1,3 +1,6 @@
+// Package state is Cogged's in-memory user-session manager (the Usm* API). A single
+// goroutine owns the maps of live token IDs, per-user SGI allowlists, and failed-login
+// counters; callers interact with it over a channel, so access is serialized and safe.
 package state
 
 import (

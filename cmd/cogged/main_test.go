@@ -1,11 +1,11 @@
+//go:build integration
+
 package main
 
-// docker pull dgraph/standalone:v22.0.2
-// docker run -it --rm --net=dbridge dgraph/standalone:v22.0.2
-//  export COGGED_TEST_DB_HOST=10.20.0.4 ; cd cmd/cogged ; go test
+// End-to-end handler test. Runs an ephemeral Dgraph via testcontainers (needs Docker).
+// Run with:  go test -tags=integration ./cmd/cogged/...
 
 import (
-	"os"
 	"io"
 	"fmt"
 	"bytes"
@@ -19,6 +19,7 @@ import (
 	req "cogged/requests"
 	res "cogged/responses"
 	state "cogged/state"
+	dbtest "cogged/services/dbtest"
 )
 
 
@@ -43,17 +44,10 @@ type Environment struct {
 }
 
 
-func setupTestEnvironment() Environment {
-	dbHost := os.Getenv("COGGED_TEST_DB_HOST")
-	if dbHost == "" { dbHost = "localhost" }
-	dbPort := os.Getenv("COGGED_TEST_DB_PORT")
-	if dbPort == "" { dbPort = "9080" }
-
-	cfg := svc.Config{}
-	cfg["db.host"] = dbHost
-	cfg["db.port"] = dbPort
-
-	db := svc.NewDB(&cfg)
+func setupTestEnvironment(t *testing.T) Environment {
+	// Boot an ephemeral Dgraph via testcontainers; cleanup is registered on t.
+	db, _ := dbtest.MustStart(t)
+	cfg := db.Configuration
 
 	randbytes, _ := sec.GenerateRandomBytes(32)
 	sk := sec.B64Encode(randbytes)
@@ -65,7 +59,7 @@ func setupTestEnvironment() Environment {
 		panic(err)
 	}
 	return Environment{
-		Config: &cfg,
+		Config: cfg,
 		DB: db,
 		SecretKey: sk,
 		Username: uname,
@@ -143,7 +137,7 @@ func CreateNode(
 }
 
 func TestDefaultHandler(t *testing.T) {
-	testenv := setupTestEnvironment()
+	testenv := setupTestEnvironment(t)
 
 	state.UsmInit()
 	state.UsmRun()

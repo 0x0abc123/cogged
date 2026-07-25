@@ -163,10 +163,9 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			statusCode := http.StatusInternalServerError
 			metaValue := reflect.ValueOf(handlerErr).Elem()
 			if sv := metaValue.FieldByName("StatusCode"); sv != (reflect.Value{}) {
-				statusCode = int(sv.Int())
-				if statusCode != 0 {
-					statusCode = statusCode
-				}	
+				if code := int(sv.Int()); code != 0 {
+					statusCode = code
+				}
 			}
 			msg := handlerErr.Error()
 			h.ErrorResponse(statusCode, msg, w, r)

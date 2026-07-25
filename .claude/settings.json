@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(go doc:*)",
+      "Bash(go run:*)",
+      "Bash(go mod:*)",
+      "Bash(gofmt:*)",
+      "Bash(goimports:*)",
+      "Bash(golangci-lint:*)",
+      "Bash(./build.sh)",
+      "Bash(./runtests.sh)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker images:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$(jq -r '.tool_input.file_path // empty')\"; case \"$f\" in *.go) command -v goimports >/dev/null 2>&1 && goimports -w \"$f\"; gofmt -w \"$f\";; esac",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

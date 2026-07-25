@@ -1,3 +1,6 @@
+// Package security provides Cogged's cryptographic and authentication primitives:
+// Argon2id password hashing, AES-GCM, HMAC-SHA256 MACs, GUID/SGI generation (crypto.go),
+// and bearer-token construction/verification with per-user key derivation (auth.go).
 package security
 
 import (

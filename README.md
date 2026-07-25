@@ -54,11 +54,15 @@ The built binaries are output to the ./bin folder
 
 ## Test
 
-Note the IP address of your Dgraph instance and set the `COGGED_TEST_DB_HOST` environment variable
+Cogged has a layered test suite (see [CONTRIBUTING.md](./CONTRIBUTING.md) for detail):
 
 ```bash
-export COGGED_TEST_DB_HOST=10.1.2.3
-./runtests.sh
+# Fast, offline unit tests — no database or network required
+go test ./...
+
+# Integration tests — spin up an ephemeral Dgraph automatically via testcontainers
+# (requires Docker running); no COGGED_TEST_DB_HOST needed
+go test -tags=integration ./...
 ```
 
 ## Run/Usage
