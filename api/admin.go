@@ -51,22 +51,30 @@ func (h *AdminAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 		}
 
 		usersToUpdate := r.Users
-		//ValidateUids
-		for _, u := range *usersToUpdate {
-			if !svc.ValidateUid(u.Uid) {
-				return "", &APIError{Info: "bad uid", StatusCode: 400}
-			}
-			l := len(*u.PasswordHash)
-			if l > 0 {
-				if l <= req.MIN_USER_PASS_LENGTH {
-					return "", &APIError{Info: "password does not meet min length", StatusCode: 400}
-				}
-				pwdHash := sec.GeneratePasswordHash(*u.PasswordHash)
-				u.PasswordHash = &pwdHash
-			}
+		if aerr := prepareUsersForUpdate(*usersToUpdate); aerr != nil {
+			return "", aerr
 		}
 		cr, _ := h.Database.UpsertUsers(usersToUpdate)
 		return MarshalJSON[res.CoggedResponse](cr, uad), nil
 	}
 	return "", &APIError{Info: "not found", StatusCode: 404}
+}
+
+// prepareUsersForUpdate validates each user's uid and hashes any supplied password in
+// place. A user with no password (nil or empty PasswordHash) is left unchanged rather
+// than dereferencing a nil pointer. Returns an *APIError on the first invalid user.
+func prepareUsersForUpdate(users []*cm.GraphUser) *APIError {
+	for _, u := range users {
+		if !svc.ValidateUid(u.Uid) {
+			return &APIError{Info: "bad uid", StatusCode: 400}
+		}
+		if u.PasswordHash != nil && len(*u.PasswordHash) > 0 {
+			if len(*u.PasswordHash) <= req.MIN_USER_PASS_LENGTH {
+				return &APIError{Info: "password does not meet min length", StatusCode: 400}
+			}
+			pwdHash := sec.GeneratePasswordHash(*u.PasswordHash)
+			u.PasswordHash = &pwdHash
+		}
+	}
+	return nil
 }

@@ -44,13 +44,21 @@ func TestEdgesRequestAuthz(t *testing.T) {
 		t.Error("edges request with all three owned lists should authorize")
 	}
 
-	// Missing incoming list -> AuthzDataUnpackADStringSlice(nil) is false -> denied.
-	partial := &EdgesRequest{
+	// Single-direction request (only outgoing): the absent incoming list is optional
+	// and must not fail closed.
+	outOnly := &EdgesRequest{
 		SubjectIds:  &[]string{tok("0xa")},
 		OutgoingIds: &[]string{tok("0xc")},
 	}
-	if partial.AuthzDataUnpack(uad, "") {
-		t.Error("edges request missing a list must be denied (all three currently required)")
+	if !outOnly.AuthzDataUnpack(uad, "") {
+		t.Error("single-direction (outgoing-only) edge request should authorize")
+	}
+	inOnly := &EdgesRequest{
+		SubjectIds:  &[]string{tok("0xa")},
+		IncomingIds: &[]string{tok("0xb")},
+	}
+	if !inOnly.AuthzDataUnpack(uad, "") {
+		t.Error("single-direction (incoming-only) edge request should authorize")
 	}
 
 	// A subject token signed by a different user must be rejected.
@@ -62,6 +70,28 @@ func TestEdgesRequestAuthz(t *testing.T) {
 	}
 	if forged.AuthzDataUnpack(uad, "") {
 		t.Error("edges request with a foreign-signed subject token must be denied")
+	}
+}
+
+// Validate requires subjects plus at least one edge direction (else the op is a no-op).
+func TestEdgesRequestValidate(t *testing.T) {
+	ids := func(v ...string) *[]string { s := append([]string{}, v...); return &s }
+
+	cases := []struct {
+		name string
+		req  EdgesRequest
+		want bool
+	}{
+		{"subject+outgoing", EdgesRequest{SubjectIds: ids("0xa"), OutgoingIds: ids("0xc")}, true},
+		{"subject+incoming", EdgesRequest{SubjectIds: ids("0xa"), IncomingIds: ids("0xb")}, true},
+		{"subject only (no direction)", EdgesRequest{SubjectIds: ids("0xa")}, false},
+		{"no subject", EdgesRequest{OutgoingIds: ids("0xc")}, false},
+		{"empty", EdgesRequest{}, false},
+	}
+	for _, c := range cases {
+		if got := c.req.Validate(); got != c.want {
+			t.Errorf("%s: Validate() = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
