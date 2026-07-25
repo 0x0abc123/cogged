@@ -28,15 +28,15 @@ jobs:
       - name: Unit tests (offline, no database)
         run: go test -race ./...
 
-      - name: gofmt (report only)
+      - name: gofmt
         run: |
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
-            echo "::warning::The following files are not gofmt-clean (pre-existing legacy debt; new/changed files should be formatted):"
+            echo "::error::The following files are not gofmt-clean. Run 'gofmt -w .' and commit:"
             echo "$unformatted"
-          else
-            echo "All files are gofmt-clean."
+            exit 1
           fi
+          echo "All files are gofmt-clean."
 
   lint:
     name: golangci-lint (advisory)
