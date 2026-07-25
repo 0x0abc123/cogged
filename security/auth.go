@@ -4,26 +4,24 @@
 package security
 
 import (
-	"strings"
 	"crypto/hmac"
-	"crypto/sha256"	
+	"crypto/sha256"
+	"strings"
 )
 
 const SYS_ROLE = "sys"
 
 type UserAuthData struct {
-	Uid			string
-	Role		string
-	TokenId		string
-	Timestamp	string
-	SecretKey	string
+	Uid       string
+	Role      string
+	TokenId   string
+	Timestamp string
+	SecretKey string
 }
-
 
 func (u *UserAuthData) IsAdmin() bool {
 	return u.Role == SYS_ROLE
 }
-
 
 func MAC(message, key []byte) []byte {
 	mac := hmac.New(sha256.New, key)
@@ -31,35 +29,30 @@ func MAC(message, key []byte) []byte {
 	return mac.Sum(nil)
 }
 
-
 func MessageAndMAC(message, key string) string {
 	m64 := B64Encode([]byte(message))
 	mac64 := B64Encode(MAC([]byte(m64), B64Decode(key)))
 	return m64 + "." + mac64
 }
 
-
 func ConstructToken(uid, role, tokenid, timestamp, key string) string {
 	t := ""
 	t = uid + "." + role + "." + tokenid + "." + timestamp
-	return MessageAndMAC(t,key)
+	return MessageAndMAC(t, key)
 }
-
 
 func IsValidMAC(message, messageMAC, key []byte) bool {
 	expectedMAC := MAC(message, key)
 	return hmac.Equal(messageMAC, expectedMAC)
 }
 
-
 func UserKeyFromMasterSecret(masterKey, uid, role string) string {
-	b := append(B64Decode(masterKey), []byte(uid+"::"+role)...) 
+	b := append(B64Decode(masterKey), []byte(uid+"::"+role)...)
 	return B64Encode(SHA512Hash(b))
 }
 
-
 func UADFromToken(token, key string) *UserAuthData {
-	tp := strings.Split(token,".")
+	tp := strings.Split(token, ".")
 	if len(tp) != 2 {
 		return nil
 	}
@@ -69,16 +62,16 @@ func UADFromToken(token, key string) *UserAuthData {
 		return nil
 	}
 
-	up := strings.Split(string(B64Decode(t64)),".")
+	up := strings.Split(string(B64Decode(t64)), ".")
 	if len(up) != 4 {
 		return nil
 	}
 
 	return &UserAuthData{
-		Uid: up[0],
-		Role: up[1],
-		TokenId: up[2],
+		Uid:       up[0],
+		Role:      up[1],
+		TokenId:   up[2],
 		Timestamp: up[3],
-		SecretKey: UserKeyFromMasterSecret(key,up[0],up[1]),
+		SecretKey: UserKeyFromMasterSecret(key, up[0], up[1]),
 	}
 }

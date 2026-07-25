@@ -1,7 +1,7 @@
 package api
 
 type APIError struct {
-	Info string
+	Info       string
 	StatusCode int
 }
 

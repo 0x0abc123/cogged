@@ -1,20 +1,20 @@
 package client
 
 import (
-	"io"
-	"fmt"
-	"time"
 	"bytes"
-	"strings"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
+	"time"
 	//cm "cogged/models"
 	req "cogged/requests"
 	res "cogged/responses"
 )
 
 type ApiClientError struct {
-	Info string
+	Info       string
 	StatusCode int
 }
 
@@ -22,27 +22,22 @@ func (e ApiClientError) Error() string {
 	return e.Info
 }
 
-
 type CoggedApiClient struct {
-	Url		string
-	Username	string
-	Password	string
-	authToken	string
-	lastRequest	int64
-	tokenExpirySec	int
+	Url            string
+	Username       string
+	Password       string
+	authToken      string
+	lastRequest    int64
+	tokenExpirySec int
 }
 
-
 var (
-
 	unauthenticatedRoutes = map[string]bool{
-		"POST /auth/login": true,
+		"POST /auth/login":       true,
 		"GET /auth/clientconfig": true,
-		"GET /health/status": true,
+		"GET /health/status":     true,
 	}
-
 )
-
 
 func (c *CoggedApiClient) makeHttpRequest(httpMethod, controller, endpoint, param string, requestData interface{}) (string, error) {
 
@@ -55,9 +50,9 @@ func (c *CoggedApiClient) makeHttpRequest(httpMethod, controller, endpoint, para
 		ioReader = bytes.NewBuffer(jsonData)
 	}
 
-	url := fmt.Sprintf("%s/%s/%s",c.Url,controller,endpoint)
+	url := fmt.Sprintf("%s/%s/%s", c.Url, controller, endpoint)
 	if len(param) > 0 {
-		url += "/"+param
+		url += "/" + param
 	}
 
 	req, err := http.NewRequest(httpMethod, url, ioReader)
@@ -91,7 +86,6 @@ func (c *CoggedApiClient) makeHttpRequest(httpMethod, controller, endpoint, para
 	return string(body), nil
 }
 
-
 func bindToResponse[T any](jsonString string, responseStruct *T) error {
 	err := json.Unmarshal([]byte(jsonString), responseStruct)
 	if err == nil {
@@ -101,9 +95,8 @@ func bindToResponse[T any](jsonString string, responseStruct *T) error {
 	return &ApiClientError{Info: "json unmarshal failed", StatusCode: 0}
 }
 
-
 func (c *CoggedApiClient) Test() bool {
-	fmt.Printf("CoggedApiClient test %s\n",c.Url)
+	fmt.Printf("CoggedApiClient test %s\n", c.Url)
 	return true
 }
 
@@ -129,226 +122,220 @@ func (c *CoggedApiClient) Logout() bool {
 	return success
 }
 
-
-func (c *CoggedApiClient) authLoginPost(lr *req.LoginRequest) (*res.TokenResponse, error)  {
+func (c *CoggedApiClient) authLoginPost(lr *req.LoginRequest) (*res.TokenResponse, error) {
 	r := &res.TokenResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "auth", "login", "", lr); err == nil {
 		err = bindToResponse[res.TokenResponse](respBody, r)
 	}
 	return r, err
 
-/*
-	if !lr.Validate() {
-		return nil, &ApiClientError{Info: "invalid request data", StatusCode: 0}
-	}
-	respBody, errReq := c.makeHttpRequest("POST", "auth", "login", "", lr)
-	if errReq != nil {
-		return nil, errReq
-	}
-	r := &res.TokenResponse{}
-	if berr := bindToResponse[res.TokenResponse](respBody, r); berr != nil {
-		return nil, berr
-	}
-	return r, nil
-*/
+	/*
+	   	if !lr.Validate() {
+	   		return nil, &ApiClientError{Info: "invalid request data", StatusCode: 0}
+	   	}
+
+	   respBody, errReq := c.makeHttpRequest("POST", "auth", "login", "", lr)
+
+	   	if errReq != nil {
+	   		return nil, errReq
+	   	}
+
+	   r := &res.TokenResponse{}
+
+	   	if berr := bindToResponse[res.TokenResponse](respBody, r); berr != nil {
+	   		return nil, berr
+	   	}
+
+	   return r, nil
+	*/
 }
 
-func (c *CoggedApiClient) authLogoutPost() (bool, error)  {
+func (c *CoggedApiClient) authLogoutPost() (bool, error) {
 	_, err := c.makeHttpRequest("POST", "auth", "logout", "", &struct{}{})
 	return err == nil, err
 }
 
-func (c *CoggedApiClient) AuthRefreshGet() (*res.TokenResponse, error)  {
+func (c *CoggedApiClient) AuthRefreshGet() (*res.TokenResponse, error) {
 	r := &res.TokenResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "auth", "refresh", "", nil); err == nil {
 		err = bindToResponse[res.TokenResponse](respBody, r)
 	}
 	return r, err
 }
 
-func (c *CoggedApiClient) AuthCheckGet() (bool, error)  {
+func (c *CoggedApiClient) AuthCheckGet() (bool, error) {
 	_, err := c.makeHttpRequest("GET", "auth", "check", "", nil)
 	return err == nil, err
 }
 
-func (c *CoggedApiClient) AuthClientconfigGet() (*map[string]string, error)  {
+func (c *CoggedApiClient) AuthClientconfigGet() (*map[string]string, error) {
 	r := &map[string]string{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "auth", "clientconfig", "", r); err == nil {
 		err = bindToResponse[map[string]string](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) AdminUserPut(cur *req.CreateUserRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) AdminUserPut(cur *req.CreateUserRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "admin", "user", "", cur); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) AdminUsersPatch(ur *req.UsersRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) AdminUsersPatch(ur *req.UsersRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "admin", "users", "", ur); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) GraphNodesPost(qr *req.QueryRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) GraphNodesPost(qr *req.QueryRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "graph", "nodes", "", qr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-func (c *CoggedApiClient) GraphSharedwithGet(ad string) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) GraphSharedwithGet(ad string) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "graph", "sharedwith", ad, nil); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) GraphNodesPatch(unr *req.UpdateNodesRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) GraphNodesPatch(unr *req.UpdateNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "graph", "nodes", "", unr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-func (c *CoggedApiClient) GraphNodesPut(ad string, cnr *req.CreateNodesRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) GraphNodesPut(ad string, cnr *req.CreateNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "graph", "nodes", ad, cnr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-func (c *CoggedApiClient) GraphEdgesPut(er *req.EdgesRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) GraphEdgesPut(er *req.EdgesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "graph", "edges", "", er); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-func (c *CoggedApiClient) GraphEdgesPatch(er *req.EdgesRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) GraphEdgesPatch(er *req.EdgesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "graph", "edges", "", er); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) HealthStatusGet() (*map[string]string, error)  {
+func (c *CoggedApiClient) HealthStatusGet() (*map[string]string, error) {
 	r := &map[string]string{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "health", "status", "", r); err == nil {
 		err = bindToResponse[map[string]string](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) UserNodePut(unr *req.UserNodeRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) UserNodePut(unr *req.UserNodeRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "user", "node", "", unr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) UserNodesOwnPost(qr *req.QueryRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) UserNodesOwnPost(qr *req.QueryRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "user", "nodes", "own", qr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-func (c *CoggedApiClient) UserNodesSharedPost(qr *req.QueryRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) UserNodesSharedPost(qr *req.QueryRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "user", "nodes", "shared", qr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) UserSharePut(snr *req.ShareNodesRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) UserSharePut(snr *req.ShareNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "user", "share", "", snr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) UserSharePatch(snr *req.ShareNodesRequest) (*res.CoggedResponse, error)  {
+func (c *CoggedApiClient) UserSharePatch(snr *req.ShareNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "user", "share", "", snr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
 	}
 	return r, err
 }
 
-
-func (c *CoggedApiClient) UserNameGet(un string) (*res.UserResponse, error)  {
+func (c *CoggedApiClient) UserNameGet(un string) (*res.UserResponse, error) {
 	r := &res.UserResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "user", "name", un, nil); err == nil {
 		err = bindToResponse[res.UserResponse](respBody, r)
 	}
 	return r, err
 }
 
-func (c *CoggedApiClient) UserUidGet(uid string) (*res.UserResponse, error)  {
+func (c *CoggedApiClient) UserUidGet(uid string) (*res.UserResponse, error) {
 	r := &res.UserResponse{}
-	var err error = nil;
-	var respBody string;
+	var err error = nil
+	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "user", "uid", uid, nil); err == nil {
 		err = bindToResponse[res.UserResponse](respBody, r)
 	}

@@ -7,15 +7,13 @@ import (
 )
 
 type UpdateNodesRequest struct {
-	Nodes	*[]*cm.GraphNode	`json:"nodes,omitempty"`
+	Nodes *[]*cm.GraphNode `json:"nodes,omitempty"`
 }
-
 
 func (req *UpdateNodesRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequired string) bool {
-log.Debug("UpdateNodesRequest.AuthzDataUnpack", uad, permissionsRequired)
+	log.Debug("UpdateNodesRequest.AuthzDataUnpack", uad, permissionsRequired)
 	return cm.AuthzDataUnpackNodeSlice(req.Nodes, uad, permissionsRequired)
 }
-
 
 func (req *UpdateNodesRequest) Validate() bool {
 	return true

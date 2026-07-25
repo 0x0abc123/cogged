@@ -1,20 +1,19 @@
 package responses
 
 import (
-	"time"
 	cm "cogged/models"
 	sec "cogged/security"
 	state "cogged/state"
+	"time"
 )
 
 type CoggedResponse struct {
-	
-	ResultNodes		[]*cm.GraphNode				`json:"result_nodes,omitempty"`
-	ResultUsers		[]*cm.GraphUser				`json:"result_users,omitempty"`
-	CreatedNodes	cm.NodePtrDictionary		`json:"created_nodes,omitempty"`
-	CreatedUids		map[string]string			`json:"created_uids,omitempty"`
-	ServerTime		*time.Time					`json:"timestamp"`	
-	Error			string						`json:"error,omitempty"`
+	ResultNodes  []*cm.GraphNode      `json:"result_nodes,omitempty"`
+	ResultUsers  []*cm.GraphUser      `json:"result_users,omitempty"`
+	CreatedNodes cm.NodePtrDictionary `json:"created_nodes,omitempty"`
+	CreatedUids  map[string]string    `json:"created_uids,omitempty"`
+	ServerTime   *time.Time           `json:"timestamp"`
+	Error        string               `json:"error,omitempty"`
 }
 
 func (resp *CoggedResponse) AuthzDataPack(uad *sec.UserAuthData) {
@@ -22,9 +21,9 @@ func (resp *CoggedResponse) AuthzDataPack(uad *sec.UserAuthData) {
 		filteredNodes := []*cm.GraphNode{}
 		for _, node := range resp.ResultNodes {
 			owner := node.Owner
-			if (owner!= nil && owner.Uid == uad.Uid) ||
-			    uad.IsAdmin() ||
-			    (node.Sgi != nil && state.UsmUserCanAccessSgi(uad.Uid, *node.Sgi) && node.PermRead != nil && *node.PermRead) {
+			if (owner != nil && owner.Uid == uad.Uid) ||
+				uad.IsAdmin() ||
+				(node.Sgi != nil && state.UsmUserCanAccessSgi(uad.Uid, *node.Sgi) && node.PermRead != nil && *node.PermRead) {
 				node.AuthzDataPack(uad)
 				filteredNodes = append(filteredNodes, node)
 			}
@@ -84,13 +83,13 @@ func CoggedResponseFromUsers(users *[]*cm.GraphUser) *CoggedResponse {
 	return &cr
 }
 
-//func CoggedResponseFromNodesMap(m *map[string]*cm.GraphNode) *CoggedResponse {
+// func CoggedResponseFromNodesMap(m *map[string]*cm.GraphNode) *CoggedResponse {
 func CoggedResponseFromNodesMap(m *cm.NodePtrDictionary) *CoggedResponse {
 
 	tnow := time.Now().UTC()
 	cr := CoggedResponse{
 		CreatedNodes: *m,
-		ServerTime: &tnow,
+		ServerTime:   &tnow,
 	}
 	return &cr
 }
@@ -100,7 +99,7 @@ func CoggedResponseFromUidsMap(m *map[string]string) *CoggedResponse {
 	tnow := time.Now().UTC()
 	cr := CoggedResponse{
 		CreatedUids: *m,
-		ServerTime: &tnow,
+		ServerTime:  &tnow,
 	}
 	return &cr
 }
@@ -109,7 +108,7 @@ func CoggedResponseFromError(e string) *CoggedResponse {
 
 	tnow := time.Now().UTC()
 	cr := CoggedResponse{
-		Error: e,
+		Error:      e,
 		ServerTime: &tnow,
 	}
 	return &cr

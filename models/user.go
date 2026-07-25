@@ -1,56 +1,52 @@
 package models
 
 import (
-    "strings"
-    sec "cogged/security"
+	sec "cogged/security"
+	"strings"
 )
 
 type GraphUser struct {
+	GraphBase // embed
 
-	GraphBase		// embed
-
-	Username 		*string 		    `json:"un,omitempty"`
-	PasswordHash 	*string 		    `json:"ph,omitempty"`
-	Data 			*string 		    `json:"us,omitempty"`
-	InternalData 	*string 		    `json:"intd,omitempty"`
-	Role 			*string 		    `json:"role,omitempty"`
-	Nodes 			*[]*GraphNode       `json:"nodes,omitempty"`
-	Shared 			*[]*GraphNode       `json:"shr,omitempty"`
+	Username     *string       `json:"un,omitempty"`
+	PasswordHash *string       `json:"ph,omitempty"`
+	Data         *string       `json:"us,omitempty"`
+	InternalData *string       `json:"intd,omitempty"`
+	Role         *string       `json:"role,omitempty"`
+	Nodes        *[]*GraphNode `json:"nodes,omitempty"`
+	Shared       *[]*GraphNode `json:"shr,omitempty"`
 }
-
 
 func NewGraphUser(userUid string) *GraphUser {
-    return &GraphUser{
-        GraphBase: GraphBase{Uid: userUid},
-    }
+	return &GraphUser{
+		GraphBase: GraphBase{Uid: userUid},
+	}
 }
-
 
 func (u *GraphUser) AuthzDataPack(uad *sec.UserAuthData) {
 	ad := u.Uid + "."
-	if u.Role != nil { ad += (*u.Role) }
+	if u.Role != nil {
+		ad += (*u.Role)
+	}
 	ad += "."
 	u.AuthzData = sec.MessageAndMAC(ad, uad.SecretKey)
 }
 
-
-
 func GraphUserFromUnpackedAD(adStr string) *GraphUser {
 	if adStr != "" {
-		parts := strings.Split(adStr,".")
+		parts := strings.Split(adStr, ".")
 		if len(parts) == 3 {
 			uid := parts[0]
 			role := parts[1]
 			data := parts[2]
 			n := NewGraphUser(uid)
-            n.Role = &role
-            n.Data = &data
+			n.Role = &role
+			n.Data = &data
 			return n
 		}
 	}
 	return nil
 }
-
 
 func GraphUserFromAD(packedAuthzData, key string) *GraphUser {
 	// authzData is <b64data>.<hmac> string
@@ -59,10 +55,9 @@ func GraphUserFromAD(packedAuthzData, key string) *GraphUser {
 }
 
 func (u *GraphUser) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequired string) bool {
-    user := GraphUserFromAD(u.AuthzData, uad.SecretKey)
-    return user != nil
+	user := GraphUserFromAD(u.AuthzData, uad.SecretKey)
+	return user != nil
 }
-
 
 func AuthzDataUnpackUserADStringSlice(adSlice *[]string, uad sec.UserAuthData, permsRequired string) bool {
 	if adSlice != nil && len(*adSlice) > 0 {
@@ -79,8 +74,7 @@ func AuthzDataUnpackUserADStringSlice(adSlice *[]string, uad sec.UserAuthData, p
 	return false
 }
 
-
-//AuthzDataUnpackUserSlice
+// AuthzDataUnpackUserSlice
 func AuthzDataUnpackUserSlice(userSlice *[]*GraphUser, uad sec.UserAuthData, permsRequired string) bool {
 	if userSlice != nil && len(*userSlice) > 0 {
 		for _, n := range *userSlice {
@@ -88,7 +82,7 @@ func AuthzDataUnpackUserSlice(userSlice *[]*GraphUser, uad sec.UserAuthData, per
 				ads := (*n).AuthzData
 				if ads != "" {
 					tmpUser := GraphUserFromAD(ads, uad.SecretKey)
-					if (tmpUser != nil) {
+					if tmpUser != nil {
 						continue
 					}
 				}

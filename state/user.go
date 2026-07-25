@@ -4,18 +4,18 @@
 package state
 
 import (
+	"cogged/log"
 	"fmt"
 	"strings"
-	"cogged/log"
 )
 
 /*
-*/
-
+ */
 
 type UsmOp int
+
 const (
-	USM_TOKEN_GET		UsmOp = iota
+	USM_TOKEN_GET UsmOp = iota
 	USM_TOKEN_ADD
 	USM_TOKEN_DEL
 	USM_TOKEN_PURGE
@@ -27,34 +27,31 @@ const (
 	USM_REQRATE_LOGINFAILRESET
 )
 
-
 type Set map[string]bool
 type MapStringSet map[string]Set
 type MapStringInt map[string]int
 
 type UsmRequest struct {
-    Operation	UsmOp
-    UID		string
-    Value	string
-    ReturnVal	chan string
+	Operation UsmOp
+	UID       string
+	Value     string
+	ReturnVal chan string
 }
 
-
 var (
-    TokenIds		MapStringSet
-    SgiAllowlist	MapStringSet
-    FailedLogins	MapStringInt
-    MsgsToUsm		chan UsmRequest
+	TokenIds     MapStringSet
+	SgiAllowlist MapStringSet
+	FailedLogins MapStringInt
+	MsgsToUsm    chan UsmRequest
 )
 
-
 func makeMsg(op UsmOp, uid, val string, retvalch chan string) UsmRequest {
-    return UsmRequest {
-	Operation: op,
-	UID: uid,
-	Value: val,
-	ReturnVal: retvalch,
-    }
+	return UsmRequest{
+		Operation: op,
+		UID:       uid,
+		Value:     val,
+		ReturnVal: retvalch,
+	}
 }
 
 func UsmInit() {
@@ -119,9 +116,9 @@ func UsmRun() {
 						allowlist = make(Set)
 						SgiAllowlist[msg.UID] = allowlist
 					}
-					tp := strings.Split(msg.Value,",")
+					tp := strings.Split(msg.Value, ",")
 					if len(tp) > 0 {
-						for _,p := range tp {
+						for _, p := range tp {
 							if p != "" {
 								allowlist[p] = true
 							}
@@ -133,9 +130,9 @@ func UsmRun() {
 				if msg.UID != "" {
 					allowlist, exists := SgiAllowlist[msg.UID]
 					if exists {
-						tp := strings.Split(msg.Value,",")
+						tp := strings.Split(msg.Value, ",")
 						if len(tp) > 0 {
-							for _,p := range tp {
+							for _, p := range tp {
 								if p != "" {
 									delete(allowlist, p)
 								}
@@ -152,19 +149,19 @@ func UsmRun() {
 
 }
 
-func UsmTest1(){
+func UsmTest1() {
 	rvc := make(chan string)
-	m := makeMsg(USM_TOKEN_GET,"uid3","val3",rvc)
+	m := makeMsg(USM_TOKEN_GET, "uid3", "val3", rvc)
 	MsgsToUsm <- m
-	rv := <- rvc
-	fmt.Println("ReturnVal: "+rv)
+	rv := <-rvc
+	fmt.Println("ReturnVal: " + rv)
 }
 
 func UsmCheckTokenId(userid, tokenId string) bool {
 	rvc := make(chan string)
 	m := makeMsg(USM_TOKEN_GET, userid, tokenId, rvc)
 	MsgsToUsm <- m
-	rv := <- rvc
+	rv := <-rvc
 	return (rv == "OK")
 }
 
@@ -177,7 +174,7 @@ func UsmDeleteTokenId(userid, tokenId string) bool {
 	rvc := make(chan string)
 	m := makeMsg(USM_TOKEN_DEL, userid, tokenId, rvc)
 	MsgsToUsm <- m
-	rv := <- rvc
+	rv := <-rvc
 	return (rv == "OK")
 }
 
@@ -185,7 +182,7 @@ func UsmUserCanAccessSgi(userUid, sgi string) bool {
 	rvc := make(chan string)
 	m := makeMsg(USM_SGI_CHECK, userUid, sgi, rvc)
 	MsgsToUsm <- m
-	rv := <- rvc
+	rv := <-rvc
 	return (rv == "OK")
 }
 
@@ -193,7 +190,7 @@ func UsmUserAllowlistSgi(userUid, sgi string) {
 	rvc := make(chan string)
 	m := makeMsg(USM_SGI_ALLOW, userUid, sgi, rvc)
 	MsgsToUsm <- m
-	<- rvc
+	<-rvc
 }
 
 func UsmUserRevokeSgi(userUid, sgi string) {

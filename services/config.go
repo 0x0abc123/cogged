@@ -1,10 +1,10 @@
 package services
 
 import (
+	"cogged/log"
+	"encoding/json"
 	"os"
 	"path/filepath"
-	"encoding/json"
-	"cogged/log"
 )
 
 /*
@@ -30,7 +30,7 @@ func (c *Config) Get(key string) string {
 
 func LoadConfig(cliValue string) *Config {
 	// CLI flag overrides other places
-	configFilePath := cliValue 
+	configFilePath := cliValue
 	// try getting path from envionment variable if not from CLI flag
 	if configFilePath == "" {
 		configFilePath = os.Getenv("COGGED_CONFIG_FILE")
@@ -48,13 +48,13 @@ func LoadConfig(cliValue string) *Config {
 	}
 	confFile, err := os.ReadFile(configFilePath)
 	if err != nil {
-    	panic(err)
+		panic(err)
 	}
 
 	var confData Config
 	if err := json.Unmarshal(confFile, &confData); err != nil {
-        panic(err)
-    }
+		panic(err)
+	}
 	return &confData
 }
 

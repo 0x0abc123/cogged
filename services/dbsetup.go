@@ -1,8 +1,8 @@
 package services
 
 import (
-    "fmt"
-    sec "cogged/security"
+	sec "cogged/security"
+	"fmt"
 )
 
 const DGRAPH_SCHEMA = `
@@ -75,10 +75,11 @@ type N {
     g
 }
 `
+
 func GetDgraphSchemaVersionString() string {
-    return "cdsv_"+sec.MD5SumHex([]byte(DGRAPH_SCHEMA))[:8]
+	return "cdsv_" + sec.MD5SumHex([]byte(DGRAPH_SCHEMA))[:8]
 }
 
 func CreateLatestSchema() string {
-    return fmt.Sprintf("%s: string .\n%s", GetDgraphSchemaVersionString(), DGRAPH_SCHEMA)
+	return fmt.Sprintf("%s: string .\n%s", GetDgraphSchemaVersionString(), DGRAPH_SCHEMA)
 }

@@ -1,55 +1,56 @@
 package main
 
 import (
-	"os"
-	"fmt"
-	"time"
-	"strconv"
-	"flag"
-	"strings"
-	"reflect"
-	"errors"
-    "net/http"
-	"io/ioutil"
-	"cogged/log"
 	"cogged/api"
+	"cogged/log"
 	cm "cogged/models"
-	svc "cogged/services"
 	sec "cogged/security"
+	svc "cogged/services"
 	state "cogged/state"
+	"errors"
+	"flag"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type Set map[string]bool
 
 type DefaultHandler struct {
-	health	api.HealthAPI
-	auth	api.AuthAPI
-	admin	api.AdminAPI
-	graph	api.GraphAPI
-	user	api.UserAPI
-	allowList	*Set
-	adminList	*Set
+	health    api.HealthAPI
+	auth      api.AuthAPI
+	admin     api.AdminAPI
+	graph     api.GraphAPI
+	user      api.UserAPI
+	allowList *Set
+	adminList *Set
 }
-
 
 func (h *DefaultHandler) ErrorResponse(code int, message string, w http.ResponseWriter, r *http.Request) {
 	text := message
-	if len(message) < 1 { text = http.StatusText(code) }
+	if len(message) < 1 {
+		text = http.StatusText(code)
+	}
 	http.Error(w, text, code)
 }
 
-
 func (h *DefaultHandler) OkResponse(jsonString string, w http.ResponseWriter) {
-    w.Header().Set("Content-Type", "application/json; charset=utf-8")
-    fmt.Fprint(w, jsonString)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	fmt.Fprint(w, jsonString)
 }
-
 
 func (h *DefaultHandler) checkTimestamp(timestamp string) bool {
 	tokenEpoch, convErr := strconv.ParseInt(timestamp, 10, 64)
-	if convErr!= nil { tokenEpoch = 0 }
+	if convErr != nil {
+		tokenEpoch = 0
+	}
 	nowEpoch := time.Now().Unix()
-	return nowEpoch - tokenEpoch < h.auth.TokenExpiry
+	return nowEpoch-tokenEpoch < h.auth.TokenExpiry
 }
 
 func (h *DefaultHandler) checkTokenId(userid, tokenId string) bool {
@@ -65,7 +66,7 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := strings.TrimSpace(r.URL.Path)
-	routeParts := strings.Split(path,"/")
+	routeParts := strings.Split(path, "/")
 	numParts := len(routeParts)
 
 	// validate route is of one of the following formats:
@@ -87,46 +88,46 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		authHdr := r.Header["Authorization"]
 		if len(authHdr) == 1 && strings.HasPrefix(authHdr[0], "Bearer ") {
 			// create user auth context struct from token, it will be passed to handlers' HandleRequest()
-			tokStr := strings.Split(authHdr[0]," ")[1]
+			tokStr := strings.Split(authHdr[0], " ")[1]
 			userAuthData = sec.UADFromToken(tokStr, h.auth.SecretKey)
 
 			if userAuthData != nil {
-				log.Debug("userAuthData: %v\n",*userAuthData)
+				log.Debug("userAuthData: %v\n", *userAuthData)
 
 				// check the token timestamp and whether it has expired
 				if !h.checkTimestamp(userAuthData.Timestamp) {
 					state.UsmDeleteTokenId(userAuthData.Uid, userAuthData.TokenId)
 					h.ErrorResponse(http.StatusUnauthorized, "token expired", w, r)
-					return	
+					return
 				}
 				if !h.checkTokenId(userAuthData.Uid, userAuthData.TokenId) {
 					h.ErrorResponse(http.StatusUnauthorized, "invalid token ID", w, r)
 					return
 				}
 			} else {
-				log.Debug("malformed token or invalid MAC:",tokStr)
+				log.Debug("malformed token or invalid MAC:", tokStr)
 			}
-		} 
-		
+		}
+
 		// no valid token was present in request headers
 		if userAuthData == nil {
 			// check whether the requested route is on the unauthenticated allowlist
 			if !(*h.allowList)[path] {
 				h.ErrorResponse(http.StatusUnauthorized, "missing or invalid auth token", w, r)
-				return	
+				return
 			}
 		}
-		log.Debug("userauthdata",userAuthData)
+		log.Debug("userauthdata", userAuthData)
 
 		if (*h.adminList)[routeGroup] && !userAuthData.IsAdmin() {
 			h.ErrorResponse(http.StatusUnauthorized, "", w, r)
-			return	
+			return
 		}
 
 		reqBodyString := ""
 		if r.Body != nil {
 			bodybytes, _ := ioutil.ReadAll(r.Body)
-			reqBodyString = string(bodybytes)	
+			reqBodyString = string(bodybytes)
 		}
 
 		var handlerResponseStr string = ""
@@ -142,24 +143,24 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var handler api.Handler
 
 		switch routeGroup {
-			case "health":
-				handler = &h.health
-			case "auth":
-				handler = &h.auth
-			case "admin":
-				handler = &h.admin
-			case "graph":
-				handler = &h.graph
-			case "user":
-				handler = &h.user
-			default:
-				h.ErrorResponse(http.StatusNotFound, "", w, r)
-				return
+		case "health":
+			handler = &h.health
+		case "auth":
+			handler = &h.auth
+		case "admin":
+			handler = &h.admin
+		case "graph":
+			handler = &h.graph
+		case "user":
+			handler = &h.user
+		default:
+			h.ErrorResponse(http.StatusNotFound, "", w, r)
+			return
 		}
 
 		handlerResponseStr, handlerErr = handler.HandleRequest(handlerKey, handlerParam, reqBodyString, userAuthData)
 
-		if handlerErr!= nil {
+		if handlerErr != nil {
 			statusCode := http.StatusInternalServerError
 			metaValue := reflect.ValueOf(handlerErr).Elem()
 			if sv := metaValue.FieldByName("StatusCode"); sv != (reflect.Value{}) {
@@ -176,7 +177,6 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-
 func loadAuthzSecretKey() []byte {
 	// try getting from envionment variable
 	passphraseString := os.Getenv("COGGED_KEY")
@@ -191,13 +191,12 @@ func loadAuthzSecretKey() []byte {
 				return secretKey
 			}
 		}
-		passphraseString,_ = sec.GenerateGuid()
+		passphraseString, _ = sec.GenerateGuid()
 	}
 	// generate key from COGGED_KEY or the random passphrase
 	secretKey := sec.Argon2IDKey(passphraseString, sec.SHA512Hash([]byte(passphraseString)))
 	return secretKey
 }
-
 
 func addNewUser(flagValue string, db *svc.DB) (string, error) {
 	p := strings.Split(flagValue, ",")
@@ -205,32 +204,31 @@ func addNewUser(flagValue string, db *svc.DB) (string, error) {
 		return "", errors.New("value for -adduser is 'username,role'")
 	}
 	u := strings.TrimSpace(p[0])
-	if len(u) < 1 || strings.HasPrefix(u,"~") {
+	if len(u) < 1 || strings.HasPrefix(u, "~") {
 		return "", errors.New("username must be at least 1 char and cannot start with a tilde")
 	}
 	role := p[1]
-	b,_ := sec.GenerateRandomBytes(32)
+	b, _ := sec.GenerateRandomBytes(32)
 	password := sec.B64Encode(b)[:24]
 
 	// add user to database
 	upass := sec.GeneratePasswordHash(password)
 	u1 := &cm.GraphUser{
-		GraphBase: cm.GraphBase{Uid: "new"},
-		Username: &u,
+		GraphBase:    cm.GraphBase{Uid: "new"},
+		Username:     &u,
 		PasswordHash: &upass,
-		Role: &role,
+		Role:         &role,
 	}
-	upU1slice := make([]*cm.GraphUser,1)
+	upU1slice := make([]*cm.GraphUser, 1)
 	upU1slice[0] = u1
 	_, err1 := db.UpsertUsers(&upU1slice)
 	if err1 != nil {
 		return "", err1
 	}
-	
+
 	fmt.Printf("Added new user: %s, role: %s, password: %s\n", u, role, password)
 	return password, nil
 }
-
 
 func CreateDefaultHandler(conf *svc.Config, db *svc.DB, skB64 string) *DefaultHandler {
 	unauthenticatedRoutes := make(Set)
@@ -242,21 +240,20 @@ func CreateDefaultHandler(conf *svc.Config, db *svc.DB, skB64 string) *DefaultHa
 	adminRoutes["admin"] = true
 
 	return &DefaultHandler{
-		health:	*api.NewHealthAPI(),
-		auth:	*api.NewAuthAPI(conf, db, skB64),
-		admin:	*api.NewAdminAPI(conf, db),
-		graph:	*api.NewGraphAPI(conf, db),
-		user:	*api.NewUserAPI(conf, db),
+		health:    *api.NewHealthAPI(),
+		auth:      *api.NewAuthAPI(conf, db, skB64),
+		admin:     *api.NewAdminAPI(conf, db),
+		graph:     *api.NewGraphAPI(conf, db),
+		user:      *api.NewUserAPI(conf, db),
 		allowList: &unauthenticatedRoutes,
 		adminList: &adminRoutes,
 	}
 }
 
-
 func main() {
 	var flagListenPort int
 	flag.IntVar(&flagListenPort, "p", 0, "TCP Port that Cogged listens on (overrides config file)")
-	
+
 	var flagListenIP string
 	flag.StringVar(&flagListenIP, "ip", "", "Interface that Cogged binds to to listen for incoming connections (overrides config file)")
 
@@ -288,7 +285,7 @@ func main() {
 	if len(flagAddUser) > 0 {
 		_, err := addNewUser(flagAddUser, db)
 		if err != nil {
-			fmt.Println("failed to add user",err)
+			fmt.Println("failed to add user", err)
 		}
 		return
 	}
@@ -304,9 +301,9 @@ func main() {
 
 	dh := CreateDefaultHandler(conf, db, skB64)
 
-    mux := http.NewServeMux()
-    mux.Handle("/", dh)
-	
+	mux := http.NewServeMux()
+	mux.Handle("/", dh)
+
 	listenOn := ""
 	if flagListenIP != "" {
 		listenOn = flagListenIP
@@ -316,12 +313,12 @@ func main() {
 
 	lp := ":8090"
 	if flagListenPort > 0 {
-		lp = fmt.Sprintf(":%d",flagListenPort)
+		lp = fmt.Sprintf(":%d", flagListenPort)
 	} else if clp := conf.Get("listen.port"); clp != "" {
 		lp = ":" + clp
 	}
 	listenOn += lp
-	
-	fmt.Printf("Cogged started and listening on %s\n",listenOn)
-    http.ListenAndServe(listenOn, mux)
+
+	fmt.Printf("Cogged started and listening on %s\n", listenOn)
+	http.ListenAndServe(listenOn, mux)
 }
