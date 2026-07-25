@@ -44,7 +44,7 @@ func UpdateAllowListSharedSgis(allow bool, uid string, nl []*cm.GraphNode) {
 	}
 
 	sgiList := ""
-	for key, _ := range sgiSet {
+	for key := range sgiSet {
 		sgiList += key + ","
 	}
 

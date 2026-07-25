@@ -10,7 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"reflect"
@@ -126,11 +126,11 @@ func (h *DefaultHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		reqBodyString := ""
 		if r.Body != nil {
-			bodybytes, _ := ioutil.ReadAll(r.Body)
+			bodybytes, _ := io.ReadAll(r.Body)
 			reqBodyString = string(bodybytes)
 		}
 
-		var handlerResponseStr string = ""
+		var handlerResponseStr string
 		var handlerErr error
 
 		handlerKey := r.Method + " " + routeParts[2]
@@ -320,5 +320,7 @@ func main() {
 	listenOn += lp
 
 	fmt.Printf("Cogged started and listening on %s\n", listenOn)
-	http.ListenAndServe(listenOn, mux)
+	if err := http.ListenAndServe(listenOn, mux); err != nil {
+		log.Error("http server stopped", err)
+	}
 }

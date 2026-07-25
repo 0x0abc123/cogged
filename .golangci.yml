@@ -1,35 +1,43 @@
-# golangci-lint configuration for Cogged.
-#
-# The existing codebase predates a full lint pass, so CI runs this with
-# `only-new-issues: true` (see .github/workflows/ci.yml) to focus on newly
-# introduced problems rather than legacy debt. Run locally with: golangci-lint run
+version: "2"
 run:
-  timeout: 5m
-  # Include integration-tagged files so they are linted too.
   build-tags:
     - integration
-
 linters:
-  disable-all: true
+  default: none
   enable:
-    - govet        # suspicious constructs
-    - staticcheck  # correctness + simplifications
-    - ineffassign  # ineffectual assignments
-    - unused       # unused code
-    - errcheck     # unchecked errors
-    - gofmt        # formatting
-    - misspell     # common misspellings
-
-linters-settings:
-  errcheck:
-    check-type-assertions: false
-
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      check-type-assertions: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  # Show all issues; CI decides what is blocking via only-new-issues.
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    # Tests intentionally ignore some errors and marshal for brevity.
-    - path: _test\.go
-      linters:
-        - errcheck
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

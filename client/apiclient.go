@@ -124,7 +124,7 @@ func (c *CoggedApiClient) Logout() bool {
 
 func (c *CoggedApiClient) authLoginPost(lr *req.LoginRequest) (*res.TokenResponse, error) {
 	r := &res.TokenResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "auth", "login", "", lr); err == nil {
 		err = bindToResponse[res.TokenResponse](respBody, r)
@@ -159,7 +159,7 @@ func (c *CoggedApiClient) authLogoutPost() (bool, error) {
 
 func (c *CoggedApiClient) AuthRefreshGet() (*res.TokenResponse, error) {
 	r := &res.TokenResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "auth", "refresh", "", nil); err == nil {
 		err = bindToResponse[res.TokenResponse](respBody, r)
@@ -174,7 +174,7 @@ func (c *CoggedApiClient) AuthCheckGet() (bool, error) {
 
 func (c *CoggedApiClient) AuthClientconfigGet() (*map[string]string, error) {
 	r := &map[string]string{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "auth", "clientconfig", "", r); err == nil {
 		err = bindToResponse[map[string]string](respBody, r)
@@ -184,7 +184,7 @@ func (c *CoggedApiClient) AuthClientconfigGet() (*map[string]string, error) {
 
 func (c *CoggedApiClient) AdminUserPut(cur *req.CreateUserRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "admin", "user", "", cur); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -194,7 +194,7 @@ func (c *CoggedApiClient) AdminUserPut(cur *req.CreateUserRequest) (*res.CoggedR
 
 func (c *CoggedApiClient) AdminUsersPatch(ur *req.UsersRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "admin", "users", "", ur); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -204,7 +204,7 @@ func (c *CoggedApiClient) AdminUsersPatch(ur *req.UsersRequest) (*res.CoggedResp
 
 func (c *CoggedApiClient) GraphNodesPost(qr *req.QueryRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "graph", "nodes", "", qr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -214,7 +214,7 @@ func (c *CoggedApiClient) GraphNodesPost(qr *req.QueryRequest) (*res.CoggedRespo
 
 func (c *CoggedApiClient) GraphSharedwithGet(ad string) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "graph", "sharedwith", ad, nil); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -224,7 +224,7 @@ func (c *CoggedApiClient) GraphSharedwithGet(ad string) (*res.CoggedResponse, er
 
 func (c *CoggedApiClient) GraphNodesPatch(unr *req.UpdateNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "graph", "nodes", "", unr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -234,7 +234,7 @@ func (c *CoggedApiClient) GraphNodesPatch(unr *req.UpdateNodesRequest) (*res.Cog
 
 func (c *CoggedApiClient) GraphNodesPut(ad string, cnr *req.CreateNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "graph", "nodes", ad, cnr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -244,7 +244,7 @@ func (c *CoggedApiClient) GraphNodesPut(ad string, cnr *req.CreateNodesRequest) 
 
 func (c *CoggedApiClient) GraphEdgesPut(er *req.EdgesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "graph", "edges", "", er); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -254,7 +254,7 @@ func (c *CoggedApiClient) GraphEdgesPut(er *req.EdgesRequest) (*res.CoggedRespon
 
 func (c *CoggedApiClient) GraphEdgesPatch(er *req.EdgesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "graph", "edges", "", er); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -264,7 +264,7 @@ func (c *CoggedApiClient) GraphEdgesPatch(er *req.EdgesRequest) (*res.CoggedResp
 
 func (c *CoggedApiClient) HealthStatusGet() (*map[string]string, error) {
 	r := &map[string]string{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "health", "status", "", r); err == nil {
 		err = bindToResponse[map[string]string](respBody, r)
@@ -274,7 +274,7 @@ func (c *CoggedApiClient) HealthStatusGet() (*map[string]string, error) {
 
 func (c *CoggedApiClient) UserNodePut(unr *req.UserNodeRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "user", "node", "", unr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -284,7 +284,7 @@ func (c *CoggedApiClient) UserNodePut(unr *req.UserNodeRequest) (*res.CoggedResp
 
 func (c *CoggedApiClient) UserNodesOwnPost(qr *req.QueryRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "user", "nodes", "own", qr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -294,7 +294,7 @@ func (c *CoggedApiClient) UserNodesOwnPost(qr *req.QueryRequest) (*res.CoggedRes
 
 func (c *CoggedApiClient) UserNodesSharedPost(qr *req.QueryRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("POST", "user", "nodes", "shared", qr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -304,7 +304,7 @@ func (c *CoggedApiClient) UserNodesSharedPost(qr *req.QueryRequest) (*res.Cogged
 
 func (c *CoggedApiClient) UserSharePut(snr *req.ShareNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PUT", "user", "share", "", snr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -314,7 +314,7 @@ func (c *CoggedApiClient) UserSharePut(snr *req.ShareNodesRequest) (*res.CoggedR
 
 func (c *CoggedApiClient) UserSharePatch(snr *req.ShareNodesRequest) (*res.CoggedResponse, error) {
 	r := &res.CoggedResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("PATCH", "user", "share", "", snr); err == nil {
 		err = bindToResponse[res.CoggedResponse](respBody, r)
@@ -324,7 +324,7 @@ func (c *CoggedApiClient) UserSharePatch(snr *req.ShareNodesRequest) (*res.Cogge
 
 func (c *CoggedApiClient) UserNameGet(un string) (*res.UserResponse, error) {
 	r := &res.UserResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "user", "name", un, nil); err == nil {
 		err = bindToResponse[res.UserResponse](respBody, r)
@@ -334,7 +334,7 @@ func (c *CoggedApiClient) UserNameGet(un string) (*res.UserResponse, error) {
 
 func (c *CoggedApiClient) UserUidGet(uid string) (*res.UserResponse, error) {
 	r := &res.UserResponse{}
-	var err error = nil
+	var err error
 	var respBody string
 	if respBody, err = c.makeHttpRequest("GET", "user", "uid", uid, nil); err == nil {
 		err = bindToResponse[res.UserResponse](respBody, r)

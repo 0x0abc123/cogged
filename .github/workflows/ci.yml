@@ -39,20 +39,19 @@ jobs:
           echo "All files are gofmt-clean."
 
   lint:
-    name: golangci-lint (advisory)
+    name: golangci-lint
     runs-on: ubuntu-latest
-    # Advisory: the legacy code predates a full lint pass. only-new-issues keeps this
-    # focused on newly-introduced problems; continue-on-error keeps it non-blocking for now.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v6
+      # golangci-lint v2 (via action v8): v1 binaries are built with Go < 1.25 and
+      # refuse to analyze this module (go.mod targets 1.25). The pinned version keeps
+      # results reproducible; bump deliberately.
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
-          only-new-issues: true
+          version: v2.12.2
 
   integration:
     name: integration tests (testcontainers Dgraph)

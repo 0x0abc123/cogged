@@ -15,5 +15,5 @@ func (req *UsersRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequir
 }
 
 func (u *UsersRequest) Validate() bool {
-	return !(u.Users == nil || len(*(u.Users)) < 1)
+	return u.Users != nil && len(*(u.Users)) >= 1
 }
