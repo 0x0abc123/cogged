@@ -3,6 +3,8 @@
     "listen.port": "8090",
     "db.host": "127.0.0.1",
     "db.port": "9080",
+    "db.connstr": "",
+    "db.connstr._example": "dgraph://user:password@host:9080?sslmode=verify-ca",
     "log.level": "info",
     "log.file": "cogged.log",
     "secret.mode": "default",
