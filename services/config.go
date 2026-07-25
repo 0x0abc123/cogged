@@ -42,10 +42,8 @@ func LoadConfig(cliValue string) *Config {
 				configFilePath = exeDirectoryConfigPath()
 				if !statFile(configFilePath) {
 					panic("Could not load config file")
-					return nil
 				}
 			}
-			configFilePath = configFilePath
 		}
 	}
 	confFile, err := os.ReadFile(configFilePath)

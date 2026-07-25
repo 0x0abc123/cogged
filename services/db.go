@@ -1,3 +1,7 @@
+// Package services holds Cogged's application services: configuration loading
+// (config.go), all Dgraph data access (db.go), and Dgraph schema setup/versioning
+// (dbsetup.go). The DB layer talks to Dgraph through the DgraphClient interface so
+// it can be driven by a fake in tests; see NewDBWithClient.
 package services
 
 import (
@@ -101,9 +105,36 @@ func (e DBError) Error() string {
 
 type CancelFunc func()
 
+// DgraphTxn abstracts the subset of the dgo transaction API that db.go uses.
+// It lets tests drive the DB layer with a fake instead of a live Dgraph.
+type DgraphTxn interface {
+	Query(ctx context.Context, q string) (*api.Response, error)
+	QueryWithVars(ctx context.Context, q string, vars map[string]string) (*api.Response, error)
+	Mutate(ctx context.Context, mu *api.Mutation) (*api.Response, error)
+}
+
+// DgraphClient abstracts the dgo client surface used by db.go.
+// The real *dgo.Dgraph is adapted to this interface by dgoClientAdapter.
+type DgraphClient interface {
+	NewTxn() DgraphTxn
+	Alter(ctx context.Context, op *api.Operation) error
+}
+
+// dgoClientAdapter wraps a real *dgo.Dgraph so it satisfies DgraphClient.
+// *dgo.Txn already satisfies DgraphTxn, so NewTxn can return it directly.
+type dgoClientAdapter struct {
+	dg *dgo.Dgraph
+}
+
+func (a *dgoClientAdapter) NewTxn() DgraphTxn { return a.dg.NewTxn() }
+
+func (a *dgoClientAdapter) Alter(ctx context.Context, op *api.Operation) error {
+	return a.dg.Alter(ctx, op)
+}
+
 type DB struct {
 	Configuration 	*Config
-	client 			*dgo.Dgraph
+	client 			DgraphClient
 	cCancel			CancelFunc
 }
 
@@ -131,11 +162,24 @@ func NewDB(conf *Config) *DB {
 	err := newDB.Connect(dbURL)
 	if err != nil {
 		panic("Could not connect to Dgraph at "+dbURL)
-		return nil	
 	}
 	newDB.MaybeUpdateSchema()
 
 	return newDB
+}
+
+
+// NewDBWithClient builds a DB around an already-constructed DgraphClient, skipping the
+// eager Connect/schema-alter/panic path in NewDB. Intended for tests using a fake client
+// (or a caller that manages its own connection).
+func NewDBWithClient(conf *Config, client DgraphClient) *DB {
+	if !initialisedGlobal {
+		initGlobal()
+	}
+	return &DB{
+		Configuration: conf,
+		client:        client,
+	}
 }
 
 
@@ -162,7 +206,7 @@ func (d *DB) Connect(connStr string) error {
 	if dc == nil {
 		return DBError{Info: "connect to DB failed"}
 	}
-	d.client = dc
+	d.client = &dgoClientAdapter{dg: dc}
 	d.cCancel = cancelFunc
 	return nil
 }

@@ -1,3 +1,6 @@
+// Package models defines Cogged's graph domain types (GraphNode, GraphUser, GraphBase,
+// Geoloc) and the AuthzData signing/verification plus permission logic that enforces
+// cross-user access control (see node.go).
 package models
 
 type GraphBaser interface {
