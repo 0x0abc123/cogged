@@ -67,9 +67,8 @@ paths:
           content:
             application/json:
               schema:
-                description: returns the literal string "OK"
-                type: string
-                example: OK
+                description: returns an empty object {} when the token is valid
+                type: object
           description: ''
   /auth/clientconfig:
     get:
@@ -99,6 +98,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenResponse'
+          description: ''
+  /auth/logout:
+    post:
+      tags:
+        - auth
+      security:
+        - bearerAuth: []
+      description: invalidate the current auth token by removing its token id from the session
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                description: returns an empty object {}
+                type: object
           description: ''
   /auth/refresh:
     get:
@@ -214,6 +228,27 @@ paths:
       responses:
         '200':
           description: ''
+  /graph/sharedwith/{ad}:
+    get:
+      tags:
+        - graph
+      security:
+        - bearerAuth: []
+      description: list the users that a node has been shared with (requires share 's' permission on the node)
+      parameters:
+      - description: The AuthzData of the node whose shares are being listed
+        in: path
+        name: ad
+        required: true
+        schema:
+          $ref: '#/components/schemas/AuthzData'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoggedResponseRU'
+          description: ''
   /health/status:
     get:
       tags:
@@ -227,9 +262,9 @@ paths:
                 nullable: false
                 properties:
                   status:
-                    description: returns {"status":"OK"}
+                    description: returns {"status":"ok"}
                     type: string
-                    example: OK
+                    example: ok
                 type: object
           description: ''
   /user/node:
@@ -251,13 +286,23 @@ paths:
               schema:
                 $ref: '#/components/schemas/CoggedResponseCN'
           description: ''
-  /user/nodes:
+  /user/nodes/{scope}:
     post:
       tags:
         - user
       security:
         - bearerAuth: []
-      description: search GraphNodes that are linked to the requesting GraphUser via traversing outwards on the "own" edge at a depth of 1. Query with optional filters. The `root_query` field is ignored, QueryRequestClauses can only have either one of the 'and' or 'or' fields set. This will also cause the 'filter' field to be ignored. If you want just a single filter function, then set the filter field and leave the 'and' and 'or' fields null.
+      description: search GraphNodes linked to the requesting GraphUser at a depth of 1, either their own nodes (scope=own, via the "own" edge) or nodes shared with them (scope=shared, via the "shr" edge). Querying scope=shared also grants the requesting user read access to the shared nodes' share groups. Query with optional filters. The `root_ids` and `root_query` fields are ignored (the root is always the requesting user). QueryRequestClauses can only have either one of the 'and' or 'or' fields set. This will also cause the 'filter' field to be ignored. If you want just a single filter function, then set the filter field and leave the 'and' and 'or' fields null.
+      parameters:
+      - description: which set of nodes to return
+        in: path
+        name: scope
+        required: true
+        schema:
+          type: string
+          enum:
+            - own
+            - shared
       requestBody:
         content:
           application/json:
@@ -441,6 +486,19 @@ components:
         result_nodes:
           items:
             $ref: '#/components/schemas/GraphNode'
+          nullable: false
+          type: array
+        timestamp:
+          format: date-time
+          type: string
+          example: '2021-03-14T05:18:32.8247882Z'
+      type: object
+    CoggedResponseRU:
+      nullable: false
+      properties:
+        result_users:
+          items:
+            $ref: '#/components/schemas/GraphUserDTO'
           nullable: false
           type: array
         timestamp:
