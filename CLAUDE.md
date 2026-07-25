@@ -103,8 +103,5 @@ uses the `services/dbtest` helper (testcontainers). Keep `go test ./...` fast an
 
 ## Known rough edges (verify with a test before "fixing")
 
-- `cmd/cogged/main.go` dereferences `userAuthData.IsAdmin()` in `ServeHTTP` — `userAuthData` can
-  be `nil` for allowlisted routes; only safe today because no allowlisted route is under an admin
-  group. (Not yet fixed — needs a nil guard plus a test.)
 - `NewDB` panics on connect failure and eagerly alters the Dgraph schema; use `NewDBWithClient`
   in tests to avoid that path.
