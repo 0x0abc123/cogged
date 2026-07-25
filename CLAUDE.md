@@ -76,6 +76,9 @@ uses the `services/dbtest` helper (testcontainers). Keep `go test ./...` fast an
 - Config file `cogged.conf.json` (flat keys like `db.host`, `db.port`, `listen.host`,
   `listen.port`, `auth.tokenexpiry`). Resolution order: `-conf` flag → `COGGED_CONFIG_FILE` →
   cwd → exe dir (`services/config.go`).
+- Dgraph connection: built from `db.host`/`db.port` as a plaintext endpoint by default; set
+  `db.connstr` (a full `dgraph://…?sslmode=…` string, optionally with ACL creds) to override —
+  the client is opened with `dgo.Open` (`services/db.go`).
 - Env vars: `COGGED_KEY` (master secret; else `cogged.key` file, else random), `COGGED_CONFIG_FILE`.
 - CLI overrides: `-dh`/`-dp` (Dgraph host/port), `-ip`/`-p` (listen), `-adduser username,role`.
 
