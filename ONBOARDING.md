@@ -80,6 +80,37 @@ Every PR runs [`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
 Branch off `main`, open a PR, get CI green, and merge with a **merge commit** (keeps the tree
 formatted and history linear-per-feature).
 
+## Example: vector similarity search
+
+Cogged supports semantic search — store an embedding on a node's `vec` field and query by
+nearest neighbour. Embeddings come from your own model; Cogged stores and searches them
+(via an HNSW index), scoped by the same access controls as every other read.
+
+Using the TypeScript client (`clients/typescript`):
+
+```ts
+import { CoggedClient } from "cogged-client";
+
+const cogged = new CoggedClient({ baseUrl: "http://localhost:8090" });
+await cogged.login("alice", "password");
+
+// store a doc plus its embedding (a string-encoded float array)
+await cogged.createUserNode({
+  node: { uid: "$doc", ty: "doc", s1: "the quick brown fox", r: true, vec: "[0.12, -0.03, 0.88]" },
+});
+
+// find the 5 most similar nodes you're allowed to read
+const hits = await cogged.query({
+  similar: { vector: "[0.10, -0.01, 0.90]", top_k: 5 },
+  select: ["id", "s1"],
+});
+console.log(hits.result_nodes);
+```
+
+The model/DQL mechanics are in the
+[client README](./clients/typescript/README.md#vector-similarity-search) and
+[`docs/about.md`](./docs/about.md#vector-similarity-search).
+
 ## Quick links
 
 - Architecture & conventions: [`CLAUDE.md`](./CLAUDE.md)
