@@ -366,6 +366,16 @@ A unique secret key for each user is used to generate the HMAC for the AuthzData
 
 API requests that need to enforce access controls will rely on the information and HMAC in the AuthzData string attached to a recieved node to inform security decisions and ensure that information matches what is contained in the node.
 
+## Vector Similarity Search
+
+Cogged nodes can store an **embedding** — a numeric vector that captures the *meaning* of some content (for example the free text in a node's `s1`–`s4` fields), produced by an external embedding model. This enables semantic search: finding nodes whose content is similar in meaning rather than matching exact keywords.
+
+Each node has an optional `vec` predicate of Dgraph's `float32vector` type, backed by an HNSW (Hierarchical Navigable Small World) index for fast approximate nearest-neighbour search, using the cosine distance metric. You store an embedding by writing it to `vec` as a string-encoded float array, for example `"[0.12, -0.03, 0.88]"`.
+
+To search, a query request includes a `similar` block containing a query vector and a `top_k` count. Cogged runs Dgraph's `similar_to` function over the `vec` index to find the nearest nodes. Crucially, the same access controls still apply: the results are filtered to nodes the requesting user is allowed to read (they own it, it is in a share group they've been granted with the read permission set, or they are a `sys` user). Because the nearest-neighbour ranking happens *before* that filtering, a search may return fewer than `top_k` results when some of the closest vectors belong to nodes the user cannot read.
+
+Generating embeddings is left to the application — produce the vector however you prefer (a hosted embedding API, a local model, and so on) and store it on the node's `vec` field. Cogged is responsible only for storing the vectors and running the similarity search over them, scoped by its access-control rules.
+
 ## The API Documentation
 
 Cogged exposes a REST API to interact with the framework. The API documentation is contained in the `openapi3.yaml` file in the root of the repository.
