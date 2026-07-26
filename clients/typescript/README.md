@@ -83,6 +83,23 @@ npm run build      # emit dist/ (js + d.ts)
 npm run check:spec # regenerate and fail if the committed types differ from the spec
 ```
 
+### Releasing
+
+Publishing is automated by `.github/workflows/npm-publish.yml`, triggered by a tag with
+the `cogged-client-v<version>` prefix (kept separate from the Go release tags `v*`):
+
+```bash
+# 1. bump the version in clients/typescript/package.json (e.g. 0.2.1), commit, merge to main
+# 2. tag and push — the tag version must match package.json or the workflow fails
+git tag cogged-client-v0.2.1
+git push origin cogged-client-v0.2.1
+```
+
+The workflow runs `npm ci`, verifies the tag matches `package.json`, re-checks the types
+against `openapi3.yaml` (`check:spec`), builds, and runs `npm publish` (with provenance).
+It requires an `NPM_TOKEN` repository secret with publish rights to the `cogged-client`
+package.
+
 ### Keeping in sync with the spec
 
 Because this package lives in the Cogged monorepo, `npm run gen` reads
