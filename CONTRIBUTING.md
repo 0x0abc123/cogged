@@ -65,7 +65,10 @@ round-trip it through AuthzData verification.
 PR:
 
 - **build-test** (blocking): `go build`, `go vet`, `go test -race ./...` (unit only), and a
-  `gofmt` check that fails on any unformatted file.
+  `gofmt` check that fails on any unformatted file. The unit suite includes an
+  `openapi3.yaml` drift guard (`spec/`) that fails if a handler route or a
+  `GraphNode`/`GraphUser` model field has no matching entry in the spec — if it trips, update
+  `openapi3.yaml` (see `/doc-sync`), don't weaken the test.
 - **lint** (blocking): `golangci-lint` v2 (errcheck, govet, ineffassign, misspell, staticcheck,
   unused). The tree is clean, so any new finding fails the build.
 - **integration** (advisory for now): `go test -tags=integration ./...` with Docker.
