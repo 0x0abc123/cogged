@@ -54,6 +54,9 @@ const (
 	OP_LTE        string = "le"
 
 	MAX_QUERY_RECURSE_DEPTH uint = 20
+
+	DEFAULT_SIMILAR_TOPK uint = 10
+	MAX_SIMILAR_TOPK     uint = 1000
 )
 
 var (
@@ -511,6 +514,11 @@ func renderPagination(q *req.QueryRequest) string {
 // SGI values safe to inline into a DQL filter.
 var rgxSgiChars = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
+// rgxVectorLiteral matches a string-encoded float array such as "[0.1, -2, 1e-3]".
+// A query vector is validated against this before being inlined into a similar_to()
+// call, so it cannot contain DQL-breaking characters.
+var rgxVectorLiteral = regexp.MustCompile(`^\[\s*-?\d+(\.\d+)?([eE][+-]?\d+)?(\s*,\s*-?\d+(\.\d+)?([eE][+-]?\d+)?)*\s*\]$`)
+
 // renderReadAuthzFilter builds the DQL clause restricting a query to nodes the caller may
 // read, mirroring responses.CoggedResponse.AuthzDataPack exactly: the caller owns the node,
 // OR the node's sgi is one the caller has been granted AND its r (read) permission is set.
@@ -542,7 +550,28 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAut
 	query := ""
 	vars := make(map[string]string)
 
-	if q.RootQuery != nil {
+	if q.Similar != nil {
+		// Vector-similarity search: rank nodes by nearness to the query vector using
+		// the HNSW index on `vec`. Results are still access-filtered (@filter below).
+		vec := strings.TrimSpace(q.Similar.Vector)
+		if !rgxVectorLiteral.MatchString(vec) {
+			return res.CoggedResponseFromError("invalid similarity query vector")
+		}
+		topK := q.Similar.TopK
+		if topK == 0 {
+			topK = DEFAULT_SIMILAR_TOPK
+		}
+		if topK > MAX_SIMILAR_TOPK {
+			topK = MAX_SIMILAR_TOPK
+		}
+		// vec is validated to contain only digits, signs, dots, exponents, commas and
+		// brackets, so it is safe to inline inside the quoted third argument.
+		query += `
+		query q(__QVARS__) {
+			qr(func: similar_to(vec, ` + fmt.Sprintf("%d", topK) + `, "` + vec + `")__PAGEARGS__)
+		`
+
+	} else if q.RootQuery != nil {
 		query += `
 		query q(__QVARS__) {
 			qr(func:  __ROOTQUERY____PAGEARGS__)

@@ -29,6 +29,7 @@ type GraphNode struct {
 	String3      *string       `json:"s3,omitempty"`
 	String4      *string       `json:"s4,omitempty"`
 	Blob         *string       `json:"b,omitempty"`
+	Vec          *string       `json:"vec,omitempty"` // string-encoded float32 vector for similarity search, e.g. "[0.1,0.2,0.3]"
 	Num1         *float64      `json:"n1,omitempty"`
 	Num2         *float64      `json:"n2,omitempty"`
 	TimeCreated  *time.Time    `json:"c,omitempty"`

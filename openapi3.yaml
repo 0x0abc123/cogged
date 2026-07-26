@@ -654,6 +654,12 @@ components:
             the node
           type: string
           example: 'YgThiWf5zVVbrZynndqwMljuyxI='
+        vec:
+          description: 'Embedding for vector-similarity search: a string-encoded float
+            array, e.g. "[0.1,0.2,0.3]", stored in the hnsw-indexed float32vector `vec`
+            predicate. Search over it with QueryRequest.similar.'
+          type: string
+          example: '[0.12, -0.03, 0.88]'
         c:
           description: timestamp value for when node was created
           format: date-time
@@ -772,6 +778,12 @@ components:
             the node
           type: string
           example: 'YgThiWf5zVVbrZynndqwMljuyxI='
+        vec:
+          description: 'Embedding for vector-similarity search: a string-encoded float
+            array, e.g. "[0.1,0.2,0.3]", stored in the hnsw-indexed float32vector `vec`
+            predicate. Search over it with QueryRequest.similar.'
+          type: string
+          example: '[0.12, -0.03, 0.88]'
         c:
           description: timestamp value for when node was created
           format: date-time
@@ -1108,6 +1120,28 @@ components:
           description: Order descending instead of ascending; only applies when order_by
             is set.
           type: boolean
+        similar:
+          $ref: '#/components/schemas/QuerySimilarity'
+      type: object
+    QuerySimilarity:
+      description: 'Vector-similarity search: returns the nodes nearest to a query
+        vector using the hnsw index on the `vec` predicate, instead of a uid/root
+        traversal. Results are still scoped by the caller''s read permissions and any
+        filters/select.'
+      nullable: false
+      properties:
+        vector:
+          description: The query embedding as a string-encoded float array, e.g.
+            "[0.1,0.2,0.3]" (same format as a node's `vec`).
+          type: string
+          example: '[0.12, -0.03, 0.88]'
+        top_k:
+          description: How many nearest neighbours to retrieve (before read filtering).
+            Defaults to 10, capped at 1000.
+          type: integer
+          example: 10
+      required:
+        - vector
       type: object
     QueryRequestClause:
       nullable: false

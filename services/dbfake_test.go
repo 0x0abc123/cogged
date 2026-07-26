@@ -203,6 +203,39 @@ func TestQueryWithOptionsReadAuthzFilter(t *testing.T) {
 	}
 }
 
+func TestQueryWithOptionsSimilaritySearch(t *testing.T) {
+	admin := &sec.UserAuthData{Role: sec.SYS_ROLE}
+
+	// builds a similar_to root func with the given topK and inline vector
+	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	q := &req.QueryRequest{Similar: &req.QuerySimilarity{Vector: "[0.1, 0.2, 0.3]", TopK: 5}}
+	if resp := newFakeDB(fake).QueryWithOptions(q, NODENODE, admin, nil); resp.Error != "" {
+		t.Fatalf("unexpected error: %q", resp.Error)
+	}
+	if !strings.Contains(fake.lastQuery, `similar_to(vec, 5, "[0.1, 0.2, 0.3]")`) {
+		t.Errorf("similarity query malformed:\n%s", fake.lastQuery)
+	}
+
+	// topK defaults to 10 when unset
+	f2 := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(f2).QueryWithOptions(&req.QueryRequest{Similar: &req.QuerySimilarity{Vector: "[1,2]"}}, NODENODE, admin, nil)
+	if !strings.Contains(f2.lastQuery, "similar_to(vec, 10,") {
+		t.Errorf("expected default topK 10, got:\n%s", f2.lastQuery)
+	}
+
+	// invalid / injection-y vectors are rejected before any query is built
+	for _, bad := range []string{"not-a-vector", "[]", `[1]") @filter(eq(x,"y`, `[1;2]`} {
+		f := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+		resp := newFakeDB(f).QueryWithOptions(&req.QueryRequest{Similar: &req.QuerySimilarity{Vector: bad}}, NODENODE, admin, nil)
+		if resp.Error == "" {
+			t.Errorf("vector %q should be rejected", bad)
+		}
+		if f.lastQuery != "" {
+			t.Errorf("no query should be issued for invalid vector %q", bad)
+		}
+	}
+}
+
 func TestQueryWithOptionsEmptyRootIDs(t *testing.T) {
 	db := newFakeDB(&fakeClient{queryJSON: []byte(`{"qr":[]}`)})
 	q := &req.QueryRequest{RootIDs: []string{}, Depth: 3}

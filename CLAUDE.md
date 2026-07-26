@@ -35,7 +35,8 @@ Nodes are stored in Dgraph with **short predicate names** (`services/dbsetup.go`
   `shr`/`~shr` (share edge + reverse), `sgi` (share-group id).
 - Permission bools: `r` read, `w` write, `o` out-edge, `i` in-edge, `d` delete, `s` share.
 - Data fields: `ty` type, `id`, `p` private, `s1..s4` strings, `b` blob, `n1/n2` floats,
-  `c` created, `m` modified, `t1/t2` times, `g` geo.
+  `c` created, `m` modified, `t1/t2` times, `g` geo, `vec` embedding
+  (`float32vector`, hnsw-indexed; searched via `QueryRequest.similar` → DQL `similar_to`).
 - User fields: `un` username, `ph` password hash, `us` userdata, `intd` internal, `role`.
 
 **AuthzData tokens** are how the server avoids trusting client-supplied UIDs:
