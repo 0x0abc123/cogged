@@ -20,6 +20,16 @@ type QueryRequest struct {
 	Depth     uint                `json:"depth"`
 	Filters   *QueryRequestClause `json:"filters,omitempty"`
 	Select    []string            `json:"select,omitempty"`
+
+	// Pagination (all optional). First/Offset give offset-based paging; First/After
+	// give cursor-based paging (After is a node uid, results after it in the ordering).
+	// OrderBy names an indexed predicate to sort by (OrderDesc for descending); when
+	// unset, results follow Dgraph's default uid order.
+	First     *int    `json:"first,omitempty"`
+	Offset    *int    `json:"offset,omitempty"`
+	After     *string `json:"after,omitempty"`
+	OrderBy   *string `json:"order_by,omitempty"`
+	OrderDesc bool    `json:"order_desc,omitempty"`
 }
 
 func (req *QueryRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequired string) bool {

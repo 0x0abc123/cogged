@@ -1082,6 +1082,32 @@ components:
             example: s1
           nullable: false
           type: array
+        first:
+          description: 'Pagination: return at most this many results (like SQL LIMIT).
+            Combine with offset for offset-based paging, or with after for cursor-based
+            paging.'
+          type: integer
+          example: 20
+        offset:
+          description: 'Pagination: skip this many results before returning (like SQL
+            OFFSET). Used together with first.'
+          type: integer
+          example: 40
+        after:
+          description: 'Pagination cursor: return results after this node uid in the
+            ordering. Cheaper than offset for deep paging. Used together with first.'
+          type: string
+          example: '0x2a3f'
+        order_by:
+          description: An indexed GraphNode predicate to order results by (e.g. c or
+            m). When unset, results follow Dgraph's default uid order. Field names that
+            are not allowed are ignored.
+          type: string
+          example: c
+        order_desc:
+          description: Order descending instead of ascending; only applies when order_by
+            is set.
+          type: boolean
       type: object
     QueryRequestClause:
       nullable: false

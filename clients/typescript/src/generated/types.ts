@@ -1234,6 +1234,28 @@ export interface components {
              *     - g
              */
             select?: string[];
+            /**
+             * @description Pagination: return at most this many results (like SQL LIMIT). Combine with offset for offset-based paging, or with after for cursor-based paging.
+             * @example 20
+             */
+            first?: number;
+            /**
+             * @description Pagination: skip this many results before returning (like SQL OFFSET). Used together with first.
+             * @example 40
+             */
+            offset?: number;
+            /**
+             * @description Pagination cursor: return results after this node uid in the ordering. Cheaper than offset for deep paging. Used together with first.
+             * @example 0x2a3f
+             */
+            after?: string;
+            /**
+             * @description An indexed GraphNode predicate to order results by (e.g. c or m). When unset, results follow Dgraph's default uid order. Field names that are not allowed are ignored.
+             * @example c
+             */
+            order_by?: string;
+            /** @description Order descending instead of ascending; only applies when order_by is set. */
+            order_desc?: boolean;
         };
         QueryRequestClause: {
             /** @description logical AND of the filter sub clauses contained in the array */

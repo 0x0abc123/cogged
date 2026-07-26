@@ -144,6 +144,35 @@ func TestQueryWithOptionsRecurseQuery(t *testing.T) {
 	}
 }
 
+func TestQueryWithOptionsInjectsPagination(t *testing.T) {
+	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	db := newFakeDB(fake)
+
+	first, offset := 10, 20
+	order, after := "c", "0x2a"
+	q := &req.QueryRequest{
+		RootIDs: []string{"0x11"},
+		Depth:   3,
+		First:   &first,
+		Offset:  &offset,
+		OrderBy: &order,
+		After:   &after,
+	}
+	resp := db.QueryWithOptions(q, NODENODE)
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %q", resp.Error)
+	}
+	for _, want := range []string{"orderasc: c", "first: 10", "offset: 20", "after: 0x2a"} {
+		if !strings.Contains(fake.lastQuery, want) {
+			t.Errorf("query missing %q; got:\n%s", want, fake.lastQuery)
+		}
+	}
+	// the pagination args must sit inside the qr func parens, before the @filter
+	if !strings.Contains(fake.lastQuery, "first: 10, offset: 20, after: 0x2a)") {
+		t.Errorf("pagination args not placed inside func(...): %s", fake.lastQuery)
+	}
+}
+
 func TestQueryWithOptionsEmptyRootIDs(t *testing.T) {
 	db := newFakeDB(&fakeClient{queryJSON: []byte(`{"qr":[]}`)})
 	q := &req.QueryRequest{RootIDs: []string{}, Depth: 3}

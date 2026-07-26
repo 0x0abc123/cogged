@@ -242,3 +242,111 @@ func TestDBLayerScenario(t *testing.T) {
 		t.Errorf("'done' folder should no longer be shared with user2")
 	}
 }
+
+// TestDBPagination creates a folder with several message children and verifies both
+// offset-based (first/offset) and cursor-based (first/after) pagination against a real
+// Dgraph.
+func TestDBPagination(t *testing.T) {
+	db, _ := dbtest.MustStart(t)
+
+	rnd, _ := sec.GenerateRandomBytes(5)
+	suffix := fmt.Sprintf("%x", rnd)
+
+	// owner user
+	u := &cm.GraphUser{
+		GraphBase:    cm.GraphBase{Uid: "u"},
+		Username:     strp("pageuser_" + suffix),
+		PasswordHash: strp("pw"),
+		Role:         strp("user"),
+	}
+	ulist := []*cm.GraphUser{u}
+	ures, err := db.UpsertUsers(&ulist)
+	if err != nil {
+		t.Fatalf("UpsertUsers: %v", err)
+	}
+	owner := &cm.GraphUser{GraphBase: cm.GraphBase{Uid: ures.CreatedUids["u"]}}
+
+	// a folder with n message children
+	const n = 5
+	folder := cm.NewGraphNodeJustUID("folder")
+	folder.Owner, folder.Id, folder.Type = owner, strp("folder_"+suffix), strp(typeFolder)
+	nodeList := []*cm.GraphNode{folder}
+	edges := &[]*cm.GraphNode{}
+	for k := 0; k < n; k++ {
+		key := fmt.Sprintf("msg%d", k)
+		m := cm.NewGraphNodeJustUID(key)
+		m.Owner, m.Id, m.Type = owner, strp(fmt.Sprintf("msg_%s_%d", suffix, k)), strp(typeMessage)
+		nodeList = append(nodeList, m)
+		*edges = append(*edges, cm.NewGraphNodeJustUID(key))
+	}
+	folder.OutEdges = edges
+	res, err := db.UpsertNodes(&nodeList)
+	if err != nil {
+		t.Fatalf("UpsertNodes: %v", err)
+	}
+	folderUID := res.CreatedNodes["folder"].Uid
+
+	// paginated query of the folder's message descendants
+	page := func(first int, offset *int, after string) []*cm.GraphNode {
+		q := &req.QueryRequest{
+			RootIDs: []string{folderUID},
+			Depth:   uint(20),
+			Select:  []string{"id", "ty"},
+			Filters: &req.QueryRequestClause{Field: "ty", Op: "eq", Val: typeMessage},
+			First:   &first,
+		}
+		if offset != nil {
+			q.Offset = offset
+		}
+		if after != "" {
+			q.After = &after
+		}
+		r := db.QueryWithOptions(q, svc.NODENODE)
+		if r.Error != "" {
+			t.Fatalf("page query error: %s", r.Error)
+		}
+		return r.ResultNodes
+	}
+
+	if got := messageCountUnder(t, db, folderUID); got != n {
+		t.Fatalf("expected %d messages under folder, got %d", n, got)
+	}
+
+	// offset-based: pages of 2 must cover all n distinctly, with no overlap
+	seen := map[string]bool{}
+	for off := 0; off < n; off += 2 {
+		o := off
+		p := page(2, &o, "")
+		if off < n-1 && len(p) != 2 {
+			t.Errorf("offset %d: expected 2 results, got %d", off, len(p))
+		}
+		for _, node := range p {
+			if node.Uid == "" {
+				t.Error("paginated node missing uid")
+			}
+			if seen[node.Uid] {
+				t.Errorf("offset paging returned duplicate uid %s", node.Uid)
+			}
+			seen[node.Uid] = true
+		}
+	}
+	if len(seen) != n {
+		t.Errorf("offset paging covered %d distinct nodes, want %d", len(seen), n)
+	}
+
+	// cursor-based: page1, then everything after page1's last uid must be disjoint
+	p1 := page(2, nil, "")
+	if len(p1) != 2 {
+		t.Fatalf("cursor page1 expected 2, got %d", len(p1))
+	}
+	p2 := page(2, nil, p1[len(p1)-1].Uid)
+	if len(p2) != 2 {
+		t.Fatalf("cursor page2 (after %s) expected 2, got %d", p1[len(p1)-1].Uid, len(p2))
+	}
+	in1 := map[string]bool{p1[0].Uid: true, p1[1].Uid: true}
+	for _, node := range p2 {
+		if in1[node.Uid] {
+			t.Errorf("cursor page2 overlaps page1 at uid %s", node.Uid)
+		}
+	}
+}

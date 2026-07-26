@@ -471,6 +471,37 @@ func SliceFromResultJSON[T any](j *string) *[]*T {
 	return &a.QR
 }
 
+// renderPagination builds the DQL pagination/order arguments (with a leading comma) to
+// inject inside a query block's func(...), e.g. ", orderasc: c, first: 10, offset: 5,
+// after: 0x2a". Every value is validated or sanitised first — the order predicate against
+// allowedFields, the After cursor via SanitiseUID, and First/Offset are plain ints — so
+// they are safe to inline. Returns "" when no pagination is requested.
+func renderPagination(q *req.QueryRequest) string {
+	parts := []string{}
+	if q.OrderBy != nil {
+		if f := renderField(*q.OrderBy); f != "" {
+			if q.OrderDesc {
+				parts = append(parts, "orderdesc: "+f)
+			} else {
+				parts = append(parts, "orderasc: "+f)
+			}
+		}
+	}
+	if q.First != nil {
+		parts = append(parts, fmt.Sprintf("first: %d", *q.First))
+	}
+	if q.Offset != nil {
+		parts = append(parts, fmt.Sprintf("offset: %d", *q.Offset))
+	}
+	if q.After != nil && *q.After != "" {
+		parts = append(parts, "after: "+SanitiseUID(*q.After))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ", " + strings.Join(parts, ", ")
+}
+
 func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedResponse {
 	query := ""
 	vars := make(map[string]string)
@@ -478,7 +509,7 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 	if q.RootQuery != nil {
 		query += `
 		query q(__QVARS__) {
-			qr(func:  __ROOTQUERY__)
+			qr(func:  __ROOTQUERY____PAGEARGS__)
 		`
 		query = strings.ReplaceAll(query, "__ROOTQUERY__", constructQueryStringAndAddVars(*q.RootQuery, &vars))
 
@@ -518,11 +549,11 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 				  __EDGETYPE__
 				}
 			  
-				qr(func: uid(NID))`
+				qr(func: uid(NID)__PAGEARGS__)`
 			query = strings.ReplaceAll(query, "__EDGETYPE__", getEdgePredicateName(et))
 		} else {
 			query = `query q($ids: string, __QVARS__) {
-				qr(func: uid($ids))`
+				qr(func: uid($ids)__PAGEARGS__)`
 		}
 	}
 	if q.Filters == nil {
@@ -541,6 +572,7 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 	}
 	query = strings.ReplaceAll(query, "__FIELDS__", fields)
 	query = strings.ReplaceAll(query, "__FILTERS__", constructQueryStringAndAddVars(*q.Filters, &vars))
+	query = strings.ReplaceAll(query, "__PAGEARGS__", renderPagination(q))
 	query = strings.ReplaceAll(query, "__QVARS__", renderQueryVarsString(&vars))
 
 	sp, err := d.Query(query, &vars)
