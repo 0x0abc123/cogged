@@ -72,6 +72,25 @@ PR:
 - **lint** (blocking): `golangci-lint` v2 (errcheck, govet, ineffassign, misspell, staticcheck,
   unused). The tree is clean, so any new finding fails the build.
 - **integration** (advisory for now): `go test -tags=integration ./...` with Docker.
+- **ts-client**: for the TypeScript client (`clients/typescript`) — regenerates types from
+  `openapi3.yaml` and fails if the committed types drifted (`check:spec`), then typechecks and
+  builds.
+
+## Releasing
+
+There are two independent release channels, split by tag prefix so they never collide:
+
+- **Go binaries** — push a semver tag `vX.Y.Z` (e.g. `v1.0.8`). This triggers
+  [`release.yml`](./.github/workflows/release.yml) (goreleaser), which builds and publishes the
+  `cogged` binaries to a GitHub Release.
+- **TypeScript client** (`cogged-client` on npm) — push a tag `cogged-client-vX.Y.Z`. This
+  triggers [`npm-publish.yml`](./.github/workflows/npm-publish.yml), which verifies the tag
+  matches `package.json`, re-checks the generated types against `openapi3.yaml`, builds, and
+  runs `npm publish`. Full step-by-step (including the required `NPM_TOKEN` secret) is in the
+  [client README](./clients/typescript/README.md#releasing).
+
+`cogged-client-v*` does not match `v*`, so a client release never triggers goreleaser and a Go
+release never triggers an npm publish.
 
 ## Claude Code
 
