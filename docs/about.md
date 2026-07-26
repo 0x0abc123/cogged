@@ -273,6 +273,59 @@ The "s" permission on Alice's "partytime" playlist means that Bob can also share
 
 The "o" permission on Alice's "partytime" playlist means that Bob can add or remove tracks from it.
 
+## Share Groups (SGIs)
+
+Reachability via the `shr` edge decides which nodes a user can *find*, but Cogged adds a second, finer gate on top of it: the **share group**, identified by each node's **`sgi`** ("share-group id") predicate. Reaching a node is not enough to read it — the node's share group must also have been granted to the requesting user.
+
+Every node belongs to exactly one share group:
+
+- A new top-level user node (created via `PUT /user/node`) is assigned a fresh, randomly generated `sgi`.
+- Nodes created beneath a parent (via `PUT /graph/nodes/{ad}`) **inherit the parent's `sgi`**, so a subgraph built under one node forms a single share group — unless the create request sets `reset_sgi`, which starts a **new** share group for the new nodes.
+
+When user A shares a node with user B (by creating a `shr` edge, via `PUT /user/share`), Cogged grants B read access to that node's share group. The `sgi` is embedded in — and protected by the HMAC of — the node's [AuthzData](#authzdata) token, so it cannot be tampered with.
+
+For a non-owner, non-`sys` user, a read is therefore permitted only when **all** of the following hold:
+
+1. the node is reachable by traversing outward from one of the user's `shr` edges,
+2. the node's `sgi` is in the set of share groups granted to the user, and
+3. the node's `r` (read) permission is `true`.
+
+### Example
+
+Alice owns an `orders` folder containing two messages and a `private-note`. The messages were created under `orders`, so they inherit its share group (`sgi = s1`). The `private-note` was created with `reset_sgi`, placing it in a **different** share group (`sgi = s3`). Alice then shares `orders` with Bob.
+
+```mermaid
+flowchart TD
+    Bob(["Bob"])
+
+    subgraph A["share group A · sgi = s1 · shared with Bob"]
+        orders["orders folder<br/>r=true"]
+        hello["message: hello<br/>r=true"]
+        quote["message: quote<br/>r=true"]
+    end
+
+    subgraph C["share group C · sgi = s3 · created with reset_sgi"]
+        note["private-note<br/>r=true"]
+    end
+
+    orders -->|e| hello
+    orders -->|e| quote
+    orders -->|e| note
+    Bob ==>|shr| orders
+
+    classDef granted fill:#d5f5e3,stroke:#27ae60,color:#145a32;
+    classDef blocked fill:#fadbd8,stroke:#c0392b,color:#641e16;
+    class orders,hello,quote granted
+    class note blocked
+```
+
+Every node above is owned by Alice, has `r=true`, and is reachable by Bob by traversing out from his `shr` edge to `orders`. Yet Bob's read access differs:
+
+- ✅ Bob can read `orders`, `hello` and `quote` — they belong to share group A (`sgi = s1`), which Alice granted to Bob when she shared `orders`.
+- ❌ Bob cannot read `private-note`, even though he can reach it by traversal: `reset_sgi` placed it in share group C (`sgi = s3`), which was never shared with him.
+
+Share groups therefore let an owner expose part of a reachable subgraph while keeping other parts of it private, independent of the graph's structure and the per-node permission bits.
+
 ## AuthzData
 
 Cogged's design relies on the server-side checking the permissions set on nodes against operations requested by a user. To do this, the application could:
@@ -305,7 +358,7 @@ This string is a Base64 (URL-safe) encoded token of the following format:
 These fields are:
 |Field|Description|
 |-|-|
-|node_info|made up of three parts: node_uid, owner_uid, permissions, e.g. `0x123.0x4a56.rwis`|
+|node_info|made up of four parts: node_uid, owner_uid, sgi ([share-group id](#share-groups-sgis)), permissions, e.g. `0x123.0x4a56.aB3x9k.rwis`|
 |hmac|a Hashed Message Authentication Code, which is a cryptographic technique that creates a type of "signature" for the node_info that can be verified by Cogged, and will detect any tampering with the node's UID, owner UID or permissions. A HMAC involves a secret key only known to Cogged, and unless an attacker knows this secret key, they cannot forge the HMAC and spoof node_info|
 
 A unique secret key for each user is used to generate the HMAC for the AuthzData, ensuring that users cannot share AuthzData strings with other users who haven't been assigned access to nodes via the `shr` edge.
