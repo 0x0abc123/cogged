@@ -1,0 +1,52 @@
+name: npm-publish
+
+on:
+  push:
+    tags:
+      # Client releases use a dedicated prefix so they don't collide with the Go
+      # release tags (v*) handled by goreleaser. Example: cogged-client-v0.2.0
+      - "cogged-client-v*"
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+jobs:
+  publish:
+    name: publish cogged-client to npm
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: clients/typescript/package-lock.json
+
+      - run: npm ci
+
+      # Guard: the tag version must match package.json, so a release can't publish a
+      # version different from what the tag claims.
+      - name: Verify tag matches package.json version
+        run: |
+          tag_version="${GITHUB_REF_NAME#cogged-client-v}"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} (version ${tag_version}) does not match package.json version ${pkg_version}"
+            exit 1
+          fi
+
+      # Guard: never publish types that have drifted from openapi3.yaml.
+      - name: Types in sync with openapi3.yaml
+        run: npm run check:spec
+
+      - run: npm run build
+
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

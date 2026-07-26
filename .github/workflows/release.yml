@@ -3,9 +3,10 @@ name: goreleaser
 
 on:
   push:
-    # run only against tags
+    # run only against Go release tags (v1.2.3). The npm client uses a separate
+    # cogged-client-v* prefix (see npm-publish.yml) so it doesn't trigger goreleaser.
     tags:
-      - "*"
+      - "v*"
 
 permissions:
   contents: write
