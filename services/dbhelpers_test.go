@@ -7,6 +7,7 @@ import (
 
 	cm "cogged/models"
 	req "cogged/requests"
+	sec "cogged/security"
 )
 
 // TestMain initialises the package-level regexes that NewDB would normally set up,
@@ -180,6 +181,37 @@ func TestMakeTempKeyFromStringStable(t *testing.T) {
 	}
 	if !strings.HasPrefix(a, "_") {
 		t.Errorf("temp key should be prefixed with _, got %q", a)
+	}
+}
+
+func TestRenderReadAuthzFilter(t *testing.T) {
+	reader := &sec.UserAuthData{Uid: "0x1a", Role: "user"}
+	admin := &sec.UserAuthData{Uid: "0x2", Role: sec.SYS_ROLE}
+
+	if got := renderReadAuthzFilter(NODENODE, admin, []string{"s"}); got != "" {
+		t.Errorf("admin should have no filter, got %q", got)
+	}
+	if got := renderReadAuthzFilter(USERSHARE, reader, []string{"s"}); got != "" {
+		t.Errorf("USERSHARE should have no filter, got %q", got)
+	}
+	if got := renderReadAuthzFilter(NODENODE, nil, nil); got != "" {
+		t.Errorf("nil uad should have no filter, got %q", got)
+	}
+	// owner-only (no grants)
+	if got := renderReadAuthzFilter(NODENODE, reader, nil); got != "uid_in(own, 0x1a)" {
+		t.Errorf("no-grant filter = %q", got)
+	}
+	// owner OR (granted sgi AND read)
+	got := renderReadAuthzFilter(NODENODE, reader, []string{"sgiA", "sgiB"})
+	want := `(uid_in(own, 0x1a) OR (eq(sgi, ["sgiA", "sgiB"]) AND eq(r, true)))`
+	if got != want {
+		t.Errorf("grant filter =\n  %q\nwant\n  %q", got, want)
+	}
+	// values outside the base64url charset are dropped (injection guard)
+	got = renderReadAuthzFilter(NODENODE, reader, []string{"good", "bad sgi\"; DROP"})
+	want = `(uid_in(own, 0x1a) OR (eq(sgi, ["good"]) AND eq(r, true)))`
+	if got != want {
+		t.Errorf("invalid-sgi filter = %q, want %q", got, want)
 	}
 }
 

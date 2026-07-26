@@ -93,7 +93,9 @@ func (h *UserAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAut
 		r.RootIDs = []string{uid}
 		r.RootQuery = nil
 		r.Depth = 1
-		cr := h.Database.QueryWithOptions(&r, edgeType)
+		// USERNODE/USERSHARE traversals are already scoped to the caller, so no read-authz
+		// filter is applied (nil SGIs); read access is still enforced by AuthzDataPack.
+		cr := h.Database.QueryWithOptions(&r, edgeType, uad, nil)
 		if param == "shared" && !uad.IsAdmin() {
 			AllowListSharedSgis(uad.Uid, cr.ResultNodes)
 		}

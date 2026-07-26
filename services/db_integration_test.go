@@ -29,6 +29,11 @@ const (
 
 func strp(s string) *string { return &s }
 
+// adminUAD returns a sys-role caller, for which QueryWithOptions applies no read-authz
+// filter (so these scenario tests see the raw DB results, as before). The read-authz
+// filter itself is covered by TestDBReadAuthzFilter.
+func adminUAD() *sec.UserAuthData { return &sec.UserAuthData{Role: sec.SYS_ROLE} }
+
 // findByID reports whether any node in the slice has the given id (`id` predicate).
 func findByID(nodes []*cm.GraphNode, id string) bool {
 	for _, n := range nodes {
@@ -48,7 +53,7 @@ func messageCountUnder(t *testing.T, db *svc.DB, folderUID string) int {
 		Select:  []string{"id", "ty"},
 		Filters: &req.QueryRequestClause{Field: "ty", Op: "eq", Val: typeMessage},
 	}
-	resp := db.QueryWithOptions(q, svc.NODENODE)
+	resp := db.QueryWithOptions(q, svc.NODENODE, adminUAD(), nil)
 	if resp.Error != "" {
 		t.Fatalf("messageCountUnder query error: %s", resp.Error)
 	}
@@ -126,7 +131,7 @@ func TestDBLayerScenario(t *testing.T) {
 		RootIDs: []string{u1uid},
 		Depth:   uint(1),
 		Select:  []string{"id", "ty"},
-	}, svc.USERNODE)
+	}, svc.USERNODE, adminUAD(), nil)
 	if unRes.Error != "" {
 		t.Fatalf("query user nodes: %s", unRes.Error)
 	}
@@ -222,7 +227,7 @@ func TestDBLayerScenario(t *testing.T) {
 		Depth:   uint(1),
 		Select:  []string{"id", "ty"},
 	}
-	shared := db.QueryWithOptions(sharedQuery, svc.USERSHARE)
+	shared := db.QueryWithOptions(sharedQuery, svc.USERSHARE, adminUAD(), nil)
 	if shared.Error != "" {
 		t.Fatalf("query shared nodes: %s", shared.Error)
 	}
@@ -234,7 +239,7 @@ func TestDBLayerScenario(t *testing.T) {
 	if _, err := db.UpdateUserShareEdges(&[]string{doneUID}, &[]string{u2uid}, svc.DELETE); err != nil {
 		t.Fatalf("UpdateUserShareEdges(delete): %v", err)
 	}
-	unshared := db.QueryWithOptions(sharedQuery, svc.USERSHARE)
+	unshared := db.QueryWithOptions(sharedQuery, svc.USERSHARE, adminUAD(), nil)
 	if unshared.Error != "" {
 		t.Fatalf("query shared nodes after unshare: %s", unshared.Error)
 	}
@@ -301,7 +306,7 @@ func TestDBPagination(t *testing.T) {
 		if after != "" {
 			q.After = &after
 		}
-		r := db.QueryWithOptions(q, svc.NODENODE)
+		r := db.QueryWithOptions(q, svc.NODENODE, adminUAD(), nil)
 		if r.Error != "" {
 			t.Fatalf("page query error: %s", r.Error)
 		}
@@ -348,5 +353,111 @@ func TestDBPagination(t *testing.T) {
 		if in1[node.Uid] {
 			t.Errorf("cursor page2 overlaps page1 at uid %s", node.Uid)
 		}
+	}
+}
+
+// TestDBReadAuthzFilter verifies that a NODENODE query pushes the read-permission check
+// into DQL: a non-owner only sees nodes whose share-group they've been granted AND that
+// carry the r permission — so paginated pages contain only readable nodes.
+func TestDBReadAuthzFilter(t *testing.T) {
+	db, _ := dbtest.MustStart(t)
+	rnd, _ := sec.GenerateRandomBytes(5)
+	suffix := fmt.Sprintf("%x", rnd)
+
+	mkUser := func(key, name string) string {
+		u := &cm.GraphUser{
+			GraphBase:    cm.GraphBase{Uid: key},
+			Username:     strp(name + "_" + suffix),
+			PasswordHash: strp("pw"),
+			Role:         strp("user"),
+		}
+		list := []*cm.GraphUser{u}
+		res, err := db.UpsertUsers(&list)
+		if err != nil {
+			t.Fatalf("UpsertUsers(%s): %v", key, err)
+		}
+		return res.CreatedUids[key]
+	}
+	ownerUID := mkUser("owner", "owner")
+	readerUID := mkUser("reader", "reader")
+	owner := &cm.GraphUser{GraphBase: cm.GraphBase{Uid: ownerUID}}
+	yes := true
+
+	mk := func(key, id, sgi string, read bool) *cm.GraphNode {
+		m := cm.NewGraphNodeJustUID(key)
+		m.Owner, m.Id, m.Type = owner, strp(id+"_"+suffix), strp(typeMessage)
+		g := sgi
+		m.Sgi = &g
+		if read {
+			m.PermRead = &yes
+		}
+		return m
+	}
+	folder := cm.NewGraphNodeJustUID("folder")
+	folder.Owner, folder.Id, folder.Type = owner, strp("folder_"+suffix), strp(typeFolder)
+	folder.OutEdges = &[]*cm.GraphNode{
+		cm.NewGraphNodeJustUID("m1"), cm.NewGraphNodeJustUID("m2"), cm.NewGraphNodeJustUID("m3"),
+	}
+	nodeList := []*cm.GraphNode{
+		folder,
+		mk("m1", "readable", "grantsgi", true), // granted sgi + read  -> visible to reader
+		mk("m2", "noread", "grantsgi", false),  // granted sgi, no read -> hidden
+		mk("m3", "othersgi", "othersgi", true), // ungranted sgi        -> hidden
+	}
+	res, err := db.UpsertNodes(&nodeList)
+	if err != nil {
+		t.Fatalf("UpsertNodes: %v", err)
+	}
+	folderUID := res.CreatedNodes["folder"].Uid
+
+	reader := &sec.UserAuthData{Uid: readerUID, Role: "user"}
+	readerQuery := func(sgis []string, first, offset *int) []*cm.GraphNode {
+		q := &req.QueryRequest{
+			RootIDs: []string{folderUID},
+			Depth:   uint(20),
+			Select:  []string{"id", "ty"},
+			Filters: &req.QueryRequestClause{Field: "ty", Op: "eq", Val: typeMessage},
+			First:   first,
+			Offset:  offset,
+		}
+		r := db.QueryWithOptions(q, svc.NODENODE, reader, sgis)
+		if r.Error != "" {
+			t.Fatalf("reader query error: %s", r.Error)
+		}
+		return r.ResultNodes
+	}
+
+	// reader granted only "grantsgi" -> sees just m1; m2 (no read) and m3 (other sgi) are
+	// filtered out by the query itself.
+	got := readerQuery([]string{"grantsgi"}, nil, nil)
+	if len(got) != 1 || got[0].Id == nil || *got[0].Id != "readable_"+suffix {
+		t.Fatalf("reader should see only the readable node, got %d: %+v", len(got), got)
+	}
+
+	// reader with no grants -> sees nothing (owns none of them)
+	if got := readerQuery(nil, nil, nil); len(got) != 0 {
+		t.Errorf("reader without grants should see 0 nodes, got %d", len(got))
+	}
+
+	// owner sees all three (matched by the owner branch), proving the filter is per-caller
+	owns := db.QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{folderUID},
+		Depth:   uint(20),
+		Select:  []string{"id"},
+		Filters: &req.QueryRequestClause{Field: "ty", Op: "eq", Val: typeMessage},
+	}, svc.NODENODE, &sec.UserAuthData{Uid: ownerUID, Role: "user"}, nil)
+	if len(owns.ResultNodes) != 3 {
+		t.Errorf("owner should see all 3 messages, got %d", len(owns.ResultNodes))
+	}
+
+	// with the read filter in the query, pagination is now exact: first:1 returns the one
+	// readable node, and paging past it is empty (no unreadable nodes consume page slots).
+	one := 1
+	off1 := 1
+	if p := readerQuery([]string{"grantsgi"}, &one, nil); len(p) != 1 {
+		t.Errorf("first:1 should return the 1 readable node, got %d", len(p))
+	}
+	if p := readerQuery([]string{"grantsgi"}, &one, &off1); len(p) != 0 {
+		t.Errorf("offset past the only readable node should be empty, got %d", len(p))
 	}
 }

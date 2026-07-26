@@ -26,9 +26,8 @@ type QueryRequest struct {
 	// OrderBy names an indexed predicate to sort by (OrderDesc for descending); when
 	// unset, results follow Dgraph's default uid order.
 	//
-	// NOTE: for /graph/nodes queries over mixed-ownership subgraphs, pages may return
-	// fewer than First results because unreadable nodes are filtered out after Dgraph
-	// pages the raw set. See renderPagination in services/db.go.
+	// The read-permission check is applied inside the query (see renderReadAuthzFilter in
+	// services/db.go), so paginated results contain only nodes the caller may read.
 	First     *int    `json:"first,omitempty"`
 	Offset    *int    `json:"offset,omitempty"`
 	After     *string `json:"after,omitempty"`

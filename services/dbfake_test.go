@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	req "cogged/requests"
+	sec "cogged/security"
 
 	"github.com/dgraph-io/dgo/v250/protos/api"
 )
@@ -129,7 +130,7 @@ func TestQueryWithOptionsRecurseQuery(t *testing.T) {
 		Select:  []string{"id", "ty"},
 		Filters: &req.QueryRequestClause{Field: "ty", Op: "eq", Val: "msg"},
 	}
-	resp := db.QueryWithOptions(q, NODENODE)
+	resp := db.QueryWithOptions(q, NODENODE, nil, nil)
 	if resp.Error != "" {
 		t.Fatalf("unexpected error: %q", resp.Error)
 	}
@@ -158,7 +159,7 @@ func TestQueryWithOptionsInjectsPagination(t *testing.T) {
 		OrderBy: &order,
 		After:   &after,
 	}
-	resp := db.QueryWithOptions(q, NODENODE)
+	resp := db.QueryWithOptions(q, NODENODE, nil, nil)
 	if resp.Error != "" {
 		t.Fatalf("unexpected error: %q", resp.Error)
 	}
@@ -173,10 +174,39 @@ func TestQueryWithOptionsInjectsPagination(t *testing.T) {
 	}
 }
 
+func TestQueryWithOptionsReadAuthzFilter(t *testing.T) {
+	q := &req.QueryRequest{RootIDs: []string{"0x5"}, Depth: 2}
+
+	// non-admin NODENODE with grants -> read-authz filter injected
+	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	reader := &sec.UserAuthData{Uid: "0x1a", Role: "user"}
+	newFakeDB(fake).QueryWithOptions(q, NODENODE, reader, []string{"sgiA", "sgiB"})
+	for _, want := range []string{"uid_in(own, 0x1a)", `eq(sgi, ["sgiA", "sgiB"])`, "eq(r, true)"} {
+		if !strings.Contains(fake.lastQuery, want) {
+			t.Errorf("read-authz query missing %q:\n%s", want, fake.lastQuery)
+		}
+	}
+
+	// admin -> no read-authz filter
+	fadmin := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	admin := &sec.UserAuthData{Uid: "0x1", Role: sec.SYS_ROLE}
+	newFakeDB(fadmin).QueryWithOptions(q, NODENODE, admin, []string{"sgiA"})
+	if strings.Contains(fadmin.lastQuery, "uid_in(own") {
+		t.Errorf("admin query should have no read-authz filter:\n%s", fadmin.lastQuery)
+	}
+
+	// USERSHARE (owner-scoped edge) -> no read-authz filter even for a non-admin
+	fshare := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(fshare).QueryWithOptions(q, USERSHARE, reader, []string{"sgiA"})
+	if strings.Contains(fshare.lastQuery, "uid_in(own") {
+		t.Errorf("USERSHARE query should have no read-authz filter:\n%s", fshare.lastQuery)
+	}
+}
+
 func TestQueryWithOptionsEmptyRootIDs(t *testing.T) {
 	db := newFakeDB(&fakeClient{queryJSON: []byte(`{"qr":[]}`)})
 	q := &req.QueryRequest{RootIDs: []string{}, Depth: 3}
-	resp := db.QueryWithOptions(q, NODENODE)
+	resp := db.QueryWithOptions(q, NODENODE, nil, nil)
 	if resp.Error == "" {
 		t.Error("empty root ids (non-root query) should return an error response")
 	}

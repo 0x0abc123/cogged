@@ -6,6 +6,7 @@ import (
 	res "cogged/responses"
 	sec "cogged/security"
 	svc "cogged/services"
+	state "cogged/state"
 )
 
 type GraphAPI struct {
@@ -33,7 +34,7 @@ func (h *GraphAPI) HandleRequest(handlerKey, param, body string, uad *sec.UserAu
 		if berr := req.BindToRequest[req.QueryRequest](body, r, ud); berr != nil {
 			return "", &APIError{Info: berr.Error(), StatusCode: 400}
 		}
-		cr := h.Database.QueryWithOptions(r, svc.NODENODE)
+		cr := h.Database.QueryWithOptions(r, svc.NODENODE, uad, state.UsmUserAllowedSgis(uid))
 		return MarshalJSON[res.CoggedResponse](cr, uad), nil
 
 	case "GET sharedwith":
