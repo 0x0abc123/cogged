@@ -477,13 +477,10 @@ func SliceFromResultJSON[T any](j *string) *[]*T {
 // allowedFields, the After cursor via SanitiseUID, and First/Offset are plain ints — so
 // they are safe to inline. Returns "" when no pagination is requested.
 //
-// CAVEAT: pagination is applied by Dgraph BEFORE this server applies its read-permission
-// filter (responses.CoggedResponse.AuthzDataPack). For a NODENODE query that traverses a
-// subgraph of mixed ownership, a page can therefore come back with fewer than First nodes
-// (or empty) once unreadable nodes are dropped, and a client cannot reliably tell a short
-// page from the end of results. Owner-scoped queries (USERNODE/USERSHARE) are unaffected.
-// The fix is to push the read filter into the query itself so pagination sees only
-// readable nodes — planned as a follow-up.
+// Pagination is applied by Dgraph at query time. For NODENODE queries the read-permission
+// check is pushed into the same query (see renderReadAuthzFilter), so Dgraph pages over
+// only the nodes the caller may read and pages are exact. Owner-scoped queries
+// (USERNODE/USERSHARE) are already scoped to the caller by their traversal edge.
 func renderPagination(q *req.QueryRequest) string {
 	parts := []string{}
 	if q.OrderBy != nil {
@@ -510,7 +507,38 @@ func renderPagination(q *req.QueryRequest) string {
 	return ", " + strings.Join(parts, ", ")
 }
 
-func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedResponse {
+// rgxSgiChars matches the base64url charset that GenerateSgi produces; used to keep
+// SGI values safe to inline into a DQL filter.
+var rgxSgiChars = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// renderReadAuthzFilter builds the DQL clause restricting a query to nodes the caller may
+// read, mirroring responses.CoggedResponse.AuthzDataPack exactly: the caller owns the node,
+// OR the node's sgi is one the caller has been granted AND its r (read) permission is set.
+// This pushes the read check into the query so pagination sees only readable nodes.
+//
+// Returns "" ("no restriction") for admins and for owner-scoped edge types
+// (USERNODE/USERSHARE), where the traversal predicate already scopes results to the caller.
+// The output filter in AuthzDataPack is retained as defense-in-depth.
+func renderReadAuthzFilter(et EdgeType, uad *sec.UserAuthData, allowedSgis []string) string {
+	if et != NODENODE || uad == nil || uad.IsAdmin() {
+		return ""
+	}
+	ownClause := "uid_in(own, " + SanitiseUID(uad.Uid) + ")"
+
+	sgiVals := []string{}
+	for _, s := range allowedSgis {
+		if rgxSgiChars.MatchString(s) {
+			sgiVals = append(sgiVals, `"`+s+`"`)
+		}
+	}
+	if len(sgiVals) == 0 {
+		return ownClause
+	}
+	sgiClause := "(eq(sgi, [" + strings.Join(sgiVals, ", ") + "]) AND eq(r, true))"
+	return "(" + ownClause + " OR " + sgiClause + ")"
+}
+
+func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAuthData, allowedSgis []string) *res.CoggedResponse {
 	query := ""
 	vars := make(map[string]string)
 
@@ -579,7 +607,11 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType) *res.CoggedRespo
 		fields = renderFields(q.Select)
 	}
 	query = strings.ReplaceAll(query, "__FIELDS__", fields)
-	query = strings.ReplaceAll(query, "__FILTERS__", constructQueryStringAndAddVars(*q.Filters, &vars))
+	userFilter := constructQueryStringAndAddVars(*q.Filters, &vars)
+	if authz := renderReadAuthzFilter(et, uad, allowedSgis); authz != "" {
+		userFilter = "(" + userFilter + ") AND " + authz
+	}
+	query = strings.ReplaceAll(query, "__FILTERS__", userFilter)
 	query = strings.ReplaceAll(query, "__PAGEARGS__", renderPagination(q))
 	query = strings.ReplaceAll(query, "__QVARS__", renderQueryVarsString(&vars))
 

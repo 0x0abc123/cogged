@@ -22,6 +22,7 @@ const (
 	USM_SGI_CHECK
 	USM_SGI_ALLOW
 	USM_SGI_REVOKE
+	USM_SGI_LIST
 	USM_REQRATE_LOGINFAILINC
 	USM_REQRATE_LOGINFAILCOUNT
 	USM_REQRATE_LOGINFAILRESET
@@ -140,6 +141,18 @@ func UsmRun() {
 						}
 					}
 				}
+			case USM_SGI_LIST:
+				list := []string{}
+				if msg.UID != "" {
+					if allowlist, exists := SgiAllowlist[msg.UID]; exists {
+						for sgi, allowed := range allowlist {
+							if allowed {
+								list = append(list, sgi)
+							}
+						}
+					}
+				}
+				msg.ReturnVal <- strings.Join(list, ",")
 			default:
 				fmt.Println("default")
 			}
@@ -184,6 +197,19 @@ func UsmUserCanAccessSgi(userUid, sgi string) bool {
 	MsgsToUsm <- m
 	rv := <-rvc
 	return (rv == "OK")
+}
+
+// UsmUserAllowedSgis returns the SGIs currently granted to the user (the share groups
+// they may read). Used to push the read filter into graph queries.
+func UsmUserAllowedSgis(userUid string) []string {
+	rvc := make(chan string)
+	m := makeMsg(USM_SGI_LIST, userUid, "", rvc)
+	MsgsToUsm <- m
+	rv := <-rvc
+	if rv == "" {
+		return nil
+	}
+	return strings.Split(rv, ",")
 }
 
 func UsmUserAllowlistSgi(userUid, sgi string) {
