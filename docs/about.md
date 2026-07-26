@@ -195,6 +195,7 @@ A Cogged type N node has the following predicates:
 |`uid`|uid|Dgraph has a unique ID for each node in its database|
 |`e`|uid[]|An array of Dgraph UIDs. The list of outgoing directed edges represent relationships between the node and other nodes|
 |`own`|uid|The UID of the User that owns the node|
+|`sgi`|string|Share Group unique ID|
 |`r`|bool|Permission flag that indicates whether users other than the owner or superusers can read this node's predicates|
 |`w`|bool|Permission flag that indicates whether users other than the owner or superusers can update this node's predicates|
 |`o`|bool|Permission flag that indicates whether users other than the owner or superusers can create an outgoing edge from this node to another node|
@@ -204,8 +205,8 @@ A Cogged type N node has the following predicates:
 |`id`|string|The custom application can use this field for whatever format of unique identifier it wants for the node, e.g. `"52ca310b-9710-4749-b2a0-288a9a03b5a3"`, `"+63-875-9723-8373"`, `"namespace/category/7a2e6f4"` |
 |`ty`|string|The custom application can use this field to categorise nodes into custom types or classes eg. `Project`, `Message`, `Customer`, `Vehicle`, etc.|
 |`p`|string|The custom application can use this field to store data that is only visible to the node owner (or superusers)|
-|`s1`|string|The custom application can use this field for arbitrary text|
-|`s2`|string|The custom application can use this field for arbitrary text|
+|`s1`|string|The custom application can use this field for arbitrary text - this field is trigram/term-indexed for searchability|
+|`s2`|string|The custom application can use this field for arbitrary text - this field is term-indexed for searchability|
 |`s3`|string|The custom application can use this field for arbitrary text|
 |`s4`|string|The custom application can use this field for arbitrary text|
 |`b`|string|Dgraph doesn't support raw byte data, so it must be encoded as text (eg. base64). The custom application can use this field for arbitrary text, meant to store a 'blob' or large-sized data for example binary data that has been gzipped and base64 encoded|
@@ -347,7 +348,7 @@ To secure against permissions tampering and IDOR, Cogged generates an "AuthzData
 
 An example AuthzData string is:
 ```
-MHgxMjMuMHhmMzhhNy5ydw.qfbxnKX605d64nlDRjfs4qthDJA5dOdunSgBIhoBu3E
+MHgyMTA1Yi4weDQuVDZaOWZaOEJ6WmJkQlEucm8.Qx9dG4C4_yEmxrv7_WlJb978iBqgDBfZdoTWAHfHMDL4
 ```
 
 This string is a Base64 (URL-safe) encoded token of the following format:
