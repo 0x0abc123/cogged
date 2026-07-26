@@ -52,6 +52,57 @@ try {
 }
 ```
 
+### Pagination
+
+`query()` and `listNodes()` accept optional pagination fields on the `QueryRequest`:
+`first` (max results), `offset` (skip N), `after` (a node uid cursor), and `order_by` /
+`order_desc` (sort by an indexed predicate; default is uid order). Use `first` + `offset`
+for offset-based paging, or `first` + `after` for cursor-based paging.
+
+```ts
+// Offset-based: page 3, 20 per page, newest first (order by created time `c`).
+const page3 = await cogged.query({
+  root_ids: [inboxAd],
+  depth: 20,
+  filters: { field: "ty", op: "eq", val: "message" },
+  select: ["id", "ty", "s1", "c"],
+  order_by: "c",
+  order_desc: true,
+  first: 20,
+  offset: 40,
+});
+
+// Cursor-based (preferred for deep/infinite scroll): walk pages via the last uid.
+async function* allMessages(parent: string) {
+  let after: string | undefined;
+  for (;;) {
+    const res = await cogged.query({
+      root_ids: [parent],
+      depth: 20,
+      filters: { field: "ty", op: "eq", val: "message" },
+      select: ["id", "s1"],
+      first: 50,
+      ...(after ? { after } : {}),
+    });
+    const nodes = res.result_nodes ?? [];
+    if (nodes.length === 0) break;
+    yield* nodes;
+    after = nodes[nodes.length - 1]!.uid; // cursor = last uid returned
+  }
+}
+
+// listNodes takes the same pagination fields:
+const firstTen = await cogged.listNodes("shared", { select: ["id", "ty"], first: 10 });
+```
+
+Notes:
+- The server applies read-permission filtering *inside* the query, so pages contain only
+  nodes you may read and are not silently shortened — a page shorter than `first` (or empty)
+  means the end of the results.
+- `order_by` must name an **indexed, sortable** predicate (e.g. `c`, `m`); ordering by a
+  hash-only predicate is rejected by the backend. Disallowed field names are ignored.
+- `after` (cursor) is cheaper than `offset` for deep paging.
+
 ### AuthzData
 
 `AuthzData` (the `ad` field on nodes and users) is an **opaque, server-signed token**.
