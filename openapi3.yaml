@@ -967,7 +967,7 @@ components:
         AuthzData) '
       nullable: false
       properties:
-        AuthzData:
+        ad:
           $ref: '#/components/schemas/AuthzData'
         uid:
           type: string
@@ -992,6 +992,10 @@ components:
         s:
           type: boolean
           example: true
+        sgi:
+          description: share-group ID (see the sgi field on the GraphNode schema)
+          type: string
+          example: 'AY5s4mVfBQo'
       required:
       - uid
       type: object
