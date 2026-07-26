@@ -640,6 +640,15 @@ components:
           description: Other users (aside from the owner or system user) can share
             this node with other users
           type: boolean
+        sgi:
+          description: 'Share-group ID: a server-assigned identifier that groups nodes
+            into a shareable unit. Sharing a node grants the target user read access to
+            every node carrying the same sgi (subject to the r permission). It is set by
+            the server on node creation (a fresh value when a create request sets
+            reset_sgi, otherwise inherited from the parent node) and is read-only to
+            clients; it is also embedded in the node''s AuthzData.'
+          type: string
+          example: 'AY5s4mVfBQo'
         b:
           description: user-defined field that can contain arbitrary text data for
             the node
@@ -958,7 +967,7 @@ components:
         AuthzData) '
       nullable: false
       properties:
-        AuthzData:
+        ad:
           $ref: '#/components/schemas/AuthzData'
         uid:
           type: string
@@ -983,6 +992,10 @@ components:
         s:
           type: boolean
           example: true
+        sgi:
+          description: share-group ID (see the sgi field on the GraphNode schema)
+          type: string
+          example: 'AY5s4mVfBQo'
       required:
       - uid
       type: object
