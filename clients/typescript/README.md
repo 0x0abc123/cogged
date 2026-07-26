@@ -85,20 +85,46 @@ npm run check:spec # regenerate and fail if the committed types differ from the 
 
 ### Releasing
 
-Publishing is automated by `.github/workflows/npm-publish.yml`, triggered by a tag with
-the `cogged-client-v<version>` prefix (kept separate from the Go release tags `v*`):
+Publishing to npm is automated by [`.github/workflows/npm-publish.yml`](../../.github/workflows/npm-publish.yml),
+triggered by a git tag of the form **`cogged-client-v<version>`**. This prefix is
+deliberately separate from the Go release tags (`v*`, handled by goreleaser), so the two
+release channels never collide.
 
-```bash
-# 1. bump the version in clients/typescript/package.json (e.g. 0.2.1), commit, merge to main
-# 2. tag and push — the tag version must match package.json or the workflow fails
-git tag cogged-client-v0.2.1
-git push origin cogged-client-v0.2.1
-```
+**One-time setup:** an `NPM_TOKEN` [repository secret](https://github.com/0x0abc123/cogged/settings/secrets/actions)
+must exist — an npm automation or granular access token with publish rights to the
+`cogged-client` package.
 
-The workflow runs `npm ci`, verifies the tag matches `package.json`, re-checks the types
-against `openapi3.yaml` (`check:spec`), builds, and runs `npm publish` (with provenance).
-It requires an `NPM_TOKEN` repository secret with publish rights to the `cogged-client`
-package.
+**To cut a release:**
+
+1. **Bump the version** in [`package.json`](./package.json) (e.g. `0.2.0` → `0.2.1`),
+   following semver. If the API changed, first make sure the generated types are current
+   (`npm run gen` and commit any change).
+2. **Merge that to `main`** via a normal PR (CI's `ts-client` job must be green).
+3. **Tag and push** — the tag version *must* match `package.json` or the workflow fails:
+
+   ```bash
+   git checkout main && git pull
+   git tag cogged-client-v0.2.1
+   git push origin cogged-client-v0.2.1
+   ```
+
+4. **Watch the run** under the repo's Actions tab (`npm-publish` workflow). On success the
+   new version appears at <https://www.npmjs.com/package/cogged-client>.
+
+The workflow: `npm ci` → verify the tag matches `package.json` → `check:spec` (re-generate
+types and fail if they differ from `openapi3.yaml`) → `npm run build` →
+`npm publish --provenance --access public`.
+
+**Troubleshooting:**
+
+- *"tag … does not match package.json version"* — the tag's version and `package.json`
+  disagree. Delete the tag (`git push origin :cogged-client-v0.2.1`), fix `package.json` on
+  `main`, and re-tag.
+- *`check:spec` fails* — the committed `src/generated/types.ts` is stale; run `npm run gen`,
+  commit, and re-tag.
+- *provenance error* — if npm provenance ever blocks the publish, remove `--provenance`
+  from the workflow's publish step and the `id-token: write` permission.
+- Publishing the same version twice is rejected by npm — always bump first.
 
 ### Keeping in sync with the spec
 
