@@ -103,6 +103,35 @@ Notes:
   hash-only predicate is rejected by the backend. Disallowed field names are ignored.
 - `after` (cursor) is cheaper than `offset` for deep paging.
 
+### Vector similarity search
+
+Nodes can carry an embedding in the `vec` field (a string-encoded float array), and
+`query()` / `listNodes()` can rank nodes by nearness to a query vector via `similar`.
+Embeddings are produced by your own model — Cogged just stores and searches them.
+
+```ts
+// Store an embedding on a node (produce the vector with your own embedding model).
+await cogged.createUserNode({
+  node: { uid: "$doc", ty: "doc", s1: "the quick brown fox", r: true, vec: "[0.12, -0.03, 0.88]" },
+});
+
+// Find the 5 nodes most similar to a query embedding (scoped to what you can read).
+const hits = await cogged.query({
+  similar: { vector: "[0.10, -0.01, 0.90]", top_k: 5 },
+  select: ["id", "ty", "s1"],
+});
+for (const n of hits.result_nodes ?? []) {
+  console.log(n.id, n.s1);
+}
+```
+
+Notes:
+- `vec` is a **string-encoded** float array (e.g. `"[0.1,0.2,0.3]"`) — the format Dgraph's
+  `float32vector` expects. All vectors compared in one search must have the same dimension.
+- Results are filtered to nodes you're allowed to read, so a search can return **fewer than
+  `top_k`** hits if some of the nearest vectors belong to other users.
+- `top_k` defaults to 10 (capped at 1000); `similar` can be combined with `filters` and `select`.
+
 ### AuthzData
 
 `AuthzData` (the `ad` field on nodes and users) is an **opaque, server-signed token**.
