@@ -1,0 +1,31 @@
+{
+  "name": "cogged-client",
+  "version": "0.2.0",
+  "description": "TypeScript client for the Cogged API, with types generated from the backend's openapi3.yaml",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "gen": "openapi-typescript ../../openapi3.yaml -o src/generated/types.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:spec": "npm run gen && git diff --exit-code -- src/generated/types.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.9.1",
+    "typescript": "^5.9.2"
+  }
+}
