@@ -67,3 +67,23 @@ jobs:
           cache: true
       - name: Integration tests
         run: go test -tags=integration -timeout 15m ./...
+
+  ts-client:
+    name: typescript client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: clients/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/typescript/package-lock.json
+      - run: npm ci
+      # Fails if the committed generated types have drifted from ../../openapi3.yaml.
+      - name: Types in sync with openapi3.yaml
+        run: npm run check:spec
+      - run: npm run typecheck
+      - run: npm run build
