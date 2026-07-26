@@ -25,6 +25,10 @@ type QueryRequest struct {
 	// give cursor-based paging (After is a node uid, results after it in the ordering).
 	// OrderBy names an indexed predicate to sort by (OrderDesc for descending); when
 	// unset, results follow Dgraph's default uid order.
+	//
+	// NOTE: for /graph/nodes queries over mixed-ownership subgraphs, pages may return
+	// fewer than First results because unreadable nodes are filtered out after Dgraph
+	// pages the raw set. See renderPagination in services/db.go.
 	First     *int    `json:"first,omitempty"`
 	Offset    *int    `json:"offset,omitempty"`
 	After     *string `json:"after,omitempty"`

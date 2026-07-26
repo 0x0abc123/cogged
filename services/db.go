@@ -476,6 +476,14 @@ func SliceFromResultJSON[T any](j *string) *[]*T {
 // after: 0x2a". Every value is validated or sanitised first — the order predicate against
 // allowedFields, the After cursor via SanitiseUID, and First/Offset are plain ints — so
 // they are safe to inline. Returns "" when no pagination is requested.
+//
+// CAVEAT: pagination is applied by Dgraph BEFORE this server applies its read-permission
+// filter (responses.CoggedResponse.AuthzDataPack). For a NODENODE query that traverses a
+// subgraph of mixed ownership, a page can therefore come back with fewer than First nodes
+// (or empty) once unreadable nodes are dropped, and a client cannot reliably tell a short
+// page from the end of results. Owner-scoped queries (USERNODE/USERSHARE) are unaffected.
+// The fix is to push the read filter into the query itself so pagination sees only
+// readable nodes — planned as a follow-up.
 func renderPagination(q *req.QueryRequest) string {
 	parts := []string{}
 	if q.OrderBy != nil {
