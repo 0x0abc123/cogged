@@ -461,3 +461,55 @@ func TestDBReadAuthzFilter(t *testing.T) {
 		t.Errorf("offset past the only readable node should be empty, got %d", len(p))
 	}
 }
+
+// TestDBVectorSimilarity verifies the float32vector predicate + HNSW index and the
+// similar_to search against a real Dgraph. Uses hardcoded 3-dim vectors (no embedding
+// dependency): A=[1,0,0], B=[0,1,0], C=[0.9,0.1,0]; a query of [1,0,0] with topK=2
+// should return A (identical) and C (close), never the orthogonal B.
+func TestDBVectorSimilarity(t *testing.T) {
+	db, _ := dbtest.MustStart(t)
+	rnd, _ := sec.GenerateRandomBytes(5)
+	suffix := fmt.Sprintf("%x", rnd)
+
+	ures, err := db.UpsertUsers(&[]*cm.GraphUser{{
+		GraphBase: cm.GraphBase{Uid: "owner"}, Username: strp("vecowner_" + suffix),
+		PasswordHash: strp("pw"), Role: strp("user"),
+	}})
+	if err != nil {
+		t.Fatalf("UpsertUsers: %v", err)
+	}
+	owner := &cm.GraphUser{GraphBase: cm.GraphBase{Uid: ures.CreatedUids["owner"]}}
+	yes := true
+
+	mk := func(key, id, vec string) *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID(key)
+		n.Owner, n.Id, n.Type, n.PermRead, n.Vec = owner, strp(id+"_"+suffix), strp(typeMessage), &yes, strp(vec)
+		return n
+	}
+	nodes := []*cm.GraphNode{
+		mk("a", "vecA", "[1.0, 0.0, 0.0]"),
+		mk("b", "vecB", "[0.0, 1.0, 0.0]"),
+		mk("c", "vecC", "[0.9, 0.1, 0.0]"),
+	}
+	if _, err := db.UpsertNodes(&nodes); err != nil {
+		t.Fatalf("UpsertNodes: %v", err)
+	}
+
+	ownerUAD := &sec.UserAuthData{Uid: ures.CreatedUids["owner"], Role: "user"}
+	r := db.QueryWithOptions(&req.QueryRequest{
+		Similar: &req.QuerySimilarity{Vector: "[1.0, 0.0, 0.0]", TopK: 2},
+		Select:  []string{"id"},
+	}, svc.NODENODE, ownerUAD, nil)
+	if r.Error != "" {
+		t.Fatalf("similarity query error: %s", r.Error)
+	}
+	if len(r.ResultNodes) != 2 {
+		t.Fatalf("topK=2 should return 2 nodes, got %d", len(r.ResultNodes))
+	}
+	if !findByID(r.ResultNodes, "vecA_"+suffix) || !findByID(r.ResultNodes, "vecC_"+suffix) {
+		t.Errorf("expected vecA and vecC among the 2 nearest, got %+v", r.ResultNodes)
+	}
+	if findByID(r.ResultNodes, "vecB_"+suffix) {
+		t.Errorf("orthogonal vecB should not be in the top-2")
+	}
+}

@@ -37,6 +37,7 @@ m: datetime @index(hour) .
 t1: datetime @index(hour) .
 t2: datetime @index(hour) .
 g: geo .
+vec: float32vector @index(hnsw(metric: "cosine")) .
 
 type U {
     un
@@ -73,6 +74,7 @@ type N {
     t1
     t2
     g
+    vec
 }
 `
 

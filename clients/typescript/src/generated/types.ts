@@ -888,6 +888,11 @@ export interface components {
              */
             b?: string;
             /**
+             * @description Embedding for vector-similarity search: a string-encoded float array, e.g. "[0.1,0.2,0.3]", stored in the hnsw-indexed float32vector `vec` predicate. Search over it with QueryRequest.similar.
+             * @example [0.12, -0.03, 0.88]
+             */
+            vec?: string;
+            /**
              * Format: date-time
              * @description timestamp value for when node was created
              * @example 2021-03-14T05:18:32.8247882Z
@@ -997,6 +1002,11 @@ export interface components {
              * @example YgThiWf5zVVbrZynndqwMljuyxI=
              */
             b?: string;
+            /**
+             * @description Embedding for vector-similarity search: a string-encoded float array, e.g. "[0.1,0.2,0.3]", stored in the hnsw-indexed float32vector `vec` predicate. Search over it with QueryRequest.similar.
+             * @example [0.12, -0.03, 0.88]
+             */
+            vec?: string;
             /**
              * Format: date-time
              * @description timestamp value for when node was created
@@ -1256,6 +1266,20 @@ export interface components {
             order_by?: string;
             /** @description Order descending instead of ascending; only applies when order_by is set. */
             order_desc?: boolean;
+            similar?: components["schemas"]["QuerySimilarity"];
+        };
+        /** @description Vector-similarity search: returns the nodes nearest to a query vector using the hnsw index on the `vec` predicate, instead of a uid/root traversal. Results are still scoped by the caller's read permissions and any filters/select. */
+        QuerySimilarity: {
+            /**
+             * @description The query embedding as a string-encoded float array, e.g. "[0.1,0.2,0.3]" (same format as a node's `vec`).
+             * @example [0.12, -0.03, 0.88]
+             */
+            vector: string;
+            /**
+             * @description How many nearest neighbours to retrieve (before read filtering). Defaults to 10, capped at 1000.
+             * @example 10
+             */
+            top_k?: number;
         };
         QueryRequestClause: {
             /** @description logical AND of the filter sub clauses contained in the array */

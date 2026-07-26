@@ -33,6 +33,21 @@ type QueryRequest struct {
 	After     *string `json:"after,omitempty"`
 	OrderBy   *string `json:"order_by,omitempty"`
 	OrderDesc bool    `json:"order_desc,omitempty"`
+
+	// Similar, when set, runs a vector-similarity search over the `vec` predicate
+	// (HNSW index) instead of a uid/root traversal: it returns the nodes nearest to
+	// the given query vector. Results are still scoped by the caller's read
+	// permissions and any Filters/Select. See QuerySimilarity.
+	Similar *QuerySimilarity `json:"similar,omitempty"`
+}
+
+// QuerySimilarity requests a vector-similarity search.
+type QuerySimilarity struct {
+	// Vector is the query embedding as a string-encoded float array, e.g.
+	// "[0.1,0.2,0.3]" (the same format stored in a node's `vec` predicate).
+	Vector string `json:"vector"`
+	// TopK is how many nearest neighbours to retrieve (before read filtering).
+	TopK uint `json:"top_k,omitempty"`
 }
 
 func (req *QueryRequest) AuthzDataUnpack(uad sec.UserAuthData, permissionsRequired string) bool {
