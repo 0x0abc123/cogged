@@ -183,6 +183,30 @@ func TestMakeTempKeyFromStringStable(t *testing.T) {
 	}
 }
 
+func TestRenderPagination(t *testing.T) {
+	i := func(n int) *int { return &n }
+	s := func(v string) *string { return &v }
+
+	if got := renderPagination(&req.QueryRequest{}); got != "" {
+		t.Errorf("no pagination should render empty, got %q", got)
+	}
+	// offset-based, ascending order
+	got := renderPagination(&req.QueryRequest{First: i(10), Offset: i(20), OrderBy: s("c")})
+	if got != ", orderasc: c, first: 10, offset: 20" {
+		t.Errorf("offset pagination = %q", got)
+	}
+	// cursor-based, descending order; After is sanitised to a 0x uid
+	got = renderPagination(&req.QueryRequest{First: i(5), After: s("2a"), OrderBy: s("m"), OrderDesc: true})
+	if got != ", orderdesc: m, first: 5, after: 0x2a" {
+		t.Errorf("cursor pagination = %q", got)
+	}
+	// a disallowed order predicate is dropped (not injected)
+	got = renderPagination(&req.QueryRequest{OrderBy: s("evil; drop"), First: i(1)})
+	if got != ", first: 1" {
+		t.Errorf("disallowed order field should be dropped, got %q", got)
+	}
+}
+
 func TestEscapeAndRegex(t *testing.T) {
 	// alphanumerics and spaces pass through untouched
 	if got := escapeAllNonAlphanumOrSpaceChars("abc 123"); got != "abc 123" {
