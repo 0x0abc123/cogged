@@ -446,6 +446,168 @@ func TestQueryWithOptionsRejectsGeoFieldInFilters(t *testing.T) {
 	}
 }
 
+// A geo clause composes with ordinary filters and with a root_ids traversal, which the
+// request-level geo block (a root function) cannot do.
+func TestQueryWithOptionsGeoFilterClause(t *testing.T) {
+	admin := &sec.UserAuthData{Role: sec.SYS_ROLE}
+	geo := &req.QueryGeo{Point: []float64{151.2153, -33.8568}, Distance: 5000}
+
+	// standalone geo clause over a uid traversal
+	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	resp := newFakeDB(fake).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"},
+		Depth:   3,
+		Filters: &req.QueryRequestClause{Geo: geo},
+	}, NODENODE, admin, nil)
+	if resp.Error != "" {
+		t.Fatalf("unexpected error: %q", resp.Error)
+	}
+	if !strings.Contains(fake.lastQuery, "@recurse(depth: $rdepth)") {
+		t.Errorf("geo clause should not displace the traversal:\n%s", fake.lastQuery)
+	}
+	if !strings.Contains(fake.lastQuery, "@filter(near(g, [151.2153, -33.8568], 5000))") {
+		t.Errorf("geo clause not compiled into the filter:\n%s", fake.lastQuery)
+	}
+
+	// ANDed with an ordinary clause
+	fand := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(fand).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"},
+		Filters: &req.QueryRequestClause{And: []req.QueryRequestClause{
+			{Field: "ty", Op: "eq", Val: "cafe"},
+			{Geo: geo},
+		}},
+	}, NODENODE, admin, nil)
+	if !strings.Contains(fand.lastQuery, "(eq(ty,$vv") || !strings.Contains(fand.lastQuery, "and near(g, [151.2153, -33.8568], 5000))") {
+		t.Errorf("geo clause did not AND with an ordinary filter:\n%s", fand.lastQuery)
+	}
+
+	// two radii ORed together, nested a level down
+	for2 := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(for2).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"},
+		Filters: &req.QueryRequestClause{Or: []req.QueryRequestClause{
+			{Geo: geo},
+			{Geo: &req.QueryGeo{Point: []float64{115.8575, -31.9505}, Distance: 100}},
+		}},
+	}, NODENODE, admin, nil)
+	if !strings.Contains(for2.lastQuery, "(near(g, [151.2153, -33.8568], 5000) or near(g, [115.8575, -31.9505], 100))") {
+		t.Errorf("two geo clauses did not OR:\n%s", for2.lastQuery)
+	}
+
+	// the read-authz filter is still ANDed on for a non-admin
+	fauthz := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(fauthz).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"},
+		Filters: &req.QueryRequestClause{Geo: geo},
+	}, NODENODE, &sec.UserAuthData{Uid: "0x1a", Role: "user"}, []string{"sgiA"})
+	for _, want := range []string{"near(g,", "uid_in(own, 0x1a)", `eq(sgi, ["sgiA"])`} {
+		if !strings.Contains(fauthz.lastQuery, want) {
+			t.Errorf("geo clause query missing %q:\n%s", want, fauthz.lastQuery)
+		}
+	}
+
+	// a geo clause can also narrow a request-level geo root search (intersecting radii)
+	fboth := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	resp = newFakeDB(fboth).QueryWithOptions(&req.QueryRequest{
+		Geo:     geo,
+		Filters: &req.QueryRequestClause{Geo: &req.QueryGeo{Point: []float64{151.2067, -33.8715}, Distance: 3000}},
+	}, NODENODE, admin, nil)
+	if resp.Error != "" {
+		t.Fatalf("root geo + geo clause should be allowed, got %q", resp.Error)
+	}
+	if !strings.Contains(fboth.lastQuery, "func: near(g, [151.2153, -33.8568], 5000)") ||
+		!strings.Contains(fboth.lastQuery, "@filter(near(g, [151.2067, -33.8715], 3000))") {
+		t.Errorf("intersecting radii query malformed:\n%s", fboth.lastQuery)
+	}
+}
+
+// Regression: a geo clause binds no query variable (it is inlined from parsed floats), so
+// a query whose only filter is geo has an empty $vv list. The parameter list must not be
+// left with a dangling comma — "query q($ids: string, $rdepth: int, )" is a DQL parse
+// error, and it only shows up against a real Dgraph.
+func TestQueryWithOptionsGeoClauseLeavesNoDanglingComma(t *testing.T) {
+	admin := &sec.UserAuthData{Role: sec.SYS_ROLE}
+	geo := &req.QueryGeo{Point: []float64{0, 0}, Distance: 100}
+
+	shapes := map[string]*req.QueryRequest{
+		"recurse":      {RootIDs: []string{"0x5"}, Depth: 3, Filters: &req.QueryRequestClause{Geo: geo}},
+		"uid no-depth": {RootIDs: []string{"0x5"}, Filters: &req.QueryRequestClause{Geo: geo}},
+		"geo root":     {Geo: geo, Filters: &req.QueryRequestClause{Geo: geo}},
+	}
+
+	for name, q := range shapes {
+		t.Run(name, func(t *testing.T) {
+			fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+			if resp := newFakeDB(fake).QueryWithOptions(q, NODENODE, admin, nil); resp.Error != "" {
+				t.Fatalf("unexpected error: %q", resp.Error)
+			}
+			head := fake.lastQuery
+			if i := strings.Index(head, ")"); i >= 0 {
+				head = head[:i+1]
+			}
+			if strings.Contains(head, ", )") || strings.Contains(head, ",)") {
+				t.Errorf("dangling comma in query params: %q", head)
+			}
+		})
+	}
+
+	// and the params are still correct when values *are* bound
+	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(fake).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"}, Depth: 3,
+		Filters: &req.QueryRequestClause{And: []req.QueryRequestClause{
+			{Field: "ty", Op: "eq", Val: "cafe"},
+			{Geo: geo},
+		}},
+	}, NODENODE, admin, nil)
+	if !strings.Contains(fake.lastQuery, "$ids: string, $rdepth: int, $vv") {
+		t.Errorf("expected fixed params followed by the bound value:\n%s", fake.lastQuery)
+	}
+}
+
+func TestQueryWithOptionsGeoFilterClauseValidation(t *testing.T) {
+	admin := &sec.UserAuthData{Role: sec.SYS_ROLE}
+
+	cases := []struct {
+		name   string
+		clause *req.QueryRequestClause
+	}{
+		{"invalid point in clause", &req.QueryRequestClause{
+			Geo: &req.QueryGeo{Point: []float64{0, 91}, Distance: 100},
+		}},
+		{"invalid distance in clause", &req.QueryRequestClause{
+			Geo: &req.QueryGeo{Point: []float64{0, 0}, Distance: 0},
+		}},
+		{"invalid geo nested in and", &req.QueryRequestClause{And: []req.QueryRequestClause{
+			{Field: "ty", Op: "eq", Val: "cafe"},
+			{Geo: &req.QueryGeo{Point: []float64{999, 0}, Distance: 100}},
+		}}},
+		{"invalid geo nested in or", &req.QueryRequestClause{Or: []req.QueryRequestClause{
+			{Geo: &req.QueryGeo{Point: []float64{0, 0}, Distance: math.Inf(1)}},
+		}}},
+		// field/op/val on a geo clause would be silently dropped, so it is refused
+		{"geo clause also sets field", &req.QueryRequestClause{
+			Field: "ty", Op: "eq", Val: "cafe",
+			Geo: &req.QueryGeo{Point: []float64{0, 0}, Distance: 100},
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+			resp := newFakeDB(fake).QueryWithOptions(
+				&req.QueryRequest{RootIDs: []string{"0x5"}, Filters: tc.clause}, NODENODE, admin, nil)
+			if resp.Error == "" {
+				t.Error("invalid geo clause should be rejected")
+			}
+			if fake.lastQuery != "" {
+				t.Errorf("no query should reach Dgraph, got:\n%s", fake.lastQuery)
+			}
+		})
+	}
+}
+
 func TestQueryWithOptionsGeoAndSimilarAreExclusive(t *testing.T) {
 	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
 	resp := newFakeDB(fake).QueryWithOptions(&req.QueryRequest{

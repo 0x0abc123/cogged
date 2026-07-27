@@ -1284,7 +1284,9 @@ export interface components {
             geo?: components["schemas"]["QueryGeo"];
         };
         /**
-         * @description Geo radius search: returns nodes whose `g` point lies within "distance" metres of "point", using the geo index on the `g` predicate, instead of a uid/root traversal. Like "similar" it replaces the root function, so root_ids and depth are ignored; filters and select still apply and results are still scoped by the caller's read permissions. "geo" and "similar" cannot both be set in one request.
+         * @description Geo radius search: matches nodes whose `g` point lies within "distance" metres of "point", using the geo index on the `g` predicate.
+         *
+         *     Used in two places. As the request-level "geo" block it replaces the root function, so root_ids and depth are ignored; filters and select still apply and results are still scoped by the caller's read permissions, and it cannot be combined with "similar". As the "geo" property of a QueryRequestClause it is one filter term among others, so it composes with and/or and with a root_ids traversal. Both may appear in one request, which intersects the two radii.
          *
          *     This is a containment test, NOT a nearest-neighbour search. Dgraph returns geo matches in uid order, cannot sort by distance (ordering by a geo predicate is rejected: "Value of type: geo isn't sortable") and does not return the computed distance. Combining this with "first" therefore returns an arbitrary N of the nodes inside the radius, NOT the N nearest. A caller who needs nearest-first must retrieve the whole radius and sort client-side.
          */
@@ -1342,7 +1344,7 @@ export interface components {
              *
              *     "p" holds owner-private data and is not returned to other users, so filtering on it is restricted to sys role callers: a non-admin request naming "p" in any clause (including nested and/or clauses) is rejected with the error "field 'p' is private and cannot be used in filters or order_by", rather than being run. This prevents the value being inferred from which nodes a filter matches.
              *
-             *     "g" is absent from this list on purpose: no filter op can express a geo predicate, so naming it in a clause is rejected. Use the "geo" block on QueryRequest for a radius search. "g" is still valid in "select".
+             *     "g" is absent from this list on purpose: no filter op can express a geo predicate, so naming it here is rejected. To filter by proximity, set the "geo" property on this clause instead (or the request-level "geo" block for a standalone radius search). "g" is still valid in "select".
              * @example id
              */
             field?: string;
@@ -1363,6 +1365,12 @@ export interface components {
              * @example examplevalue
              */
             val?: string;
+            /**
+             * @description When set, this clause is a radius test on the `g` predicate instead of a field/op/val comparison, so proximity can be combined with ordinary filters using and/or and applied to a root_ids traversal - which the request-level "geo" block cannot do, since that replaces the query root. field, op and val must be left unset on a geo clause; setting both is rejected rather than silently ignored.
+             *
+             *     The same caveats apply as for the request-level block: it is a containment test, not nearest-first. Both may be used in one request, which intersects the two radii.
+             */
+            geo?: components["schemas"]["QueryGeo"];
         };
         QueryRequestClauseNested: {
             /**
@@ -1385,7 +1393,7 @@ export interface components {
              *
              *     "p" holds owner-private data and is not returned to other users, so filtering on it is restricted to sys role callers: a non-admin request naming "p" in any clause (including nested and/or clauses) is rejected with the error "field 'p' is private and cannot be used in filters or order_by", rather than being run. This prevents the value being inferred from which nodes a filter matches.
              *
-             *     "g" is absent from this list on purpose: no filter op can express a geo predicate, so naming it in a clause is rejected. Use the "geo" block on QueryRequest for a radius search. "g" is still valid in "select".
+             *     "g" is absent from this list on purpose: no filter op can express a geo predicate, so naming it here is rejected. To filter by proximity, set the "geo" property on this clause instead (or the request-level "geo" block for a standalone radius search). "g" is still valid in "select".
              * @example id
              */
             field?: string;
@@ -1406,6 +1414,12 @@ export interface components {
              * @example examplevalue
              */
             val?: string;
+            /**
+             * @description When set, this clause is a radius test on the `g` predicate instead of a field/op/val comparison, so proximity can be combined with ordinary filters using and/or and applied to a root_ids traversal - which the request-level "geo" block cannot do, since that replaces the query root. field, op and val must be left unset on a geo clause; setting both is rejected rather than silently ignored.
+             *
+             *     The same caveats apply as for the request-level block: it is a containment test, not nearest-first. Both may be used in one request, which intersects the two radii.
+             */
+            geo?: components["schemas"]["QueryGeo"];
         };
         ShareNodesRequest: {
             /** @description AuthzData identifiers that specify which GraphNodes will be shared with users listed in the users field of the request */

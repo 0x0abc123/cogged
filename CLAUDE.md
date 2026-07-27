@@ -43,7 +43,11 @@ Nodes are stored in Dgraph with **short predicate names** (`services/dbsetup.go`
   `c` created, `m` modified, `t1/t2` times, `vec` embedding
   (`float32vector`, hnsw-indexed; searched via `QueryRequest.similar` → DQL `similar_to`),
   `g` geo (GeoJSON point, `[longitude, latitude]`; geo-indexed, searched via
-  `QueryRequest.Geo` → DQL `near`). Both replace the query root and are mutually exclusive.
+  `QueryRequest.Geo` → DQL `near`). Both replace the query root and are mutually exclusive;
+  `QueryGeo` can also hang off a `QueryRequestClause` (`.Geo`) to compose proximity with
+  `and`/`or` and with a `root_ids` traversal. A geo clause binds no query var, so the query
+  parameter list is assembled by `renderQueryParams` — interpolating it directly leaves a
+  dangling comma that Dgraph rejects.
 - User fields: `un` username, `ph` password hash, `us` userdata, `intd` internal, `role`.
 
 **AuthzData tokens** are how the server avoids trusting client-supplied UIDs:

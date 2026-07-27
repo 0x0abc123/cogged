@@ -215,8 +215,9 @@ Four things to internalise:
   the computed distance. So `{geo: {...}, first: 10}` gives you **an arbitrary 10 inside the
   radius, not the 10 nearest.** If you need nearest-first you must fetch the whole radius and sort
   client-side, which means keeping the radius small enough that the whole set is affordable.
-- **It replaces the root function**, exactly like `similar`. `root_ids` and `depth` are ignored
-  when `geo` is set, and `geo` + `similar` together is an error. `filters` and `select` still apply.
+- **At the request level it replaces the root function**, exactly like `similar`. `root_ids` and
+  `depth` are ignored when the top-level `geo` is set, and `geo` + `similar` together is an error.
+  `filters` and `select` still apply.
 - **Access control still applies.** Results are read-filtered like any other query — a geometric
   match on a node you cannot read returns nothing.
 - **Distance is capped** at 20,100,000 m (past roughly half the Earth's circumference every point
@@ -224,6 +225,41 @@ Four things to internalise:
 
 To display distance in a list, compute it client-side from the returned `g` — the server won't
 give it to you.
+
+### Composing proximity with other filters
+
+The block above is a whole-database radius search. To ask "children of *this* node that are also
+nearby", put the same `geo` object on a **filter clause** instead — then it is one term among
+others and composes with `and`/`or` and with a `root_ids` traversal:
+
+```ts
+// Cafes under a specific folder, within 5km.
+await cogged.query({
+  root_ids: [folderAd],
+  depth: 5,
+  filters: {
+    and: [
+      { field: "ty", op: "eq", val: "cafe" },
+      { geo: { point: [151.2153, -33.8568], distance: 5000 } },
+    ],
+  },
+  select: ["id", "s1", "g"],
+});
+
+// Two cities at once.
+filters: { or: [
+  { geo: { point: [151.2153, -33.8568], distance: 5000 } },
+  { geo: { point: [144.9631, -37.8136], distance: 5000 } },
+]}
+```
+
+- A geo clause sets **only** `geo` — `field`/`op`/`val` must be left off, and setting both is
+  rejected rather than quietly ignored.
+- Setting the request-level `geo` *and* a geo clause is allowed, and intersects the two radii.
+- Every caveat from above still applies: uid order, no distance returned, no distance sort.
+
+Rule of thumb: **request-level `geo` for "what's near me", a geo clause for "which of *these* are
+near me".**
 
 ### Keep the mapping in exactly one place
 

@@ -172,8 +172,21 @@ Notes:
   neither returned nor sortable (`order_by: "g"` is rejected), so pairing `geo` with `first`
   gives an arbitrary N inside the radius. Sort client-side from the returned `g` if you need
   nearest-first.
-- Like `similar`, `geo` replaces the query root: `root_ids`/`depth` are ignored, `filters` and
-  `select` still apply, and `geo` + `similar` together is an error.
+- Like `similar`, a **request-level** `geo` replaces the query root: `root_ids`/`depth` are
+  ignored, `filters` and `select` still apply, and `geo` + `similar` together is an error.
+- To combine proximity with other conditions, or to scope it to a traversal, put `geo` on a
+  **filter clause** instead — there it is one term among others:
+  ```ts
+  await cogged.query({
+    root_ids: [folderAd], depth: 5,
+    filters: { and: [
+      { field: "ty", op: "eq", val: "cafe" },
+      { geo: { point: [151.2153, -33.8568], distance: 5000 } },
+    ]},
+  });
+  ```
+  A geo clause sets only `geo` (no `field`/`op`/`val`). Using both forms in one request
+  intersects the two radii.
 - `distance` is in metres, must be > 0, and is capped at 20,100,000.
 - `g` cannot be used in `filters` or `order_by` — the `geo` block is the only way to query it.
 
