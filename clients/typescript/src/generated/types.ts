@@ -412,11 +412,14 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description created_nodes is keyed by the $placeholder uids supplied in the request (e.g. "$placeholder1"), each value carrying the new node's uid and AuthzData. */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["CoggedResponseCN"];
+                    };
                 };
             };
         };
@@ -528,6 +531,7 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description created_nodes always has the single literal key "new" — the $placeholder uid sent in the request is replaced by the server and is not echoed back. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -755,9 +759,11 @@ export interface components {
              */
             timestamp?: string;
         };
+        /** @description Response from the node-creation endpoints. The keys of created_nodes depend on which endpoint was called: PUT /graph/nodes/{ad} echoes back the $placeholder uids supplied in the request, whereas PUT /user/node always uses the single literal key "new" (the server substitutes its own placeholder for the one node it creates, so the placeholder sent in the request is not echoed). */
         CoggedResponseCN: {
+            /** @description The newly created nodes, keyed as described above. Each value carries the assigned uid, owner, share-group id, permissions and the AuthzData token to use when referring to the node in later requests. */
             created_nodes?: {
-                $placeholder1?: components["schemas"]["NodeEdgeData"];
+                [key: string]: components["schemas"]["NodeEdgeData"];
             };
             /**
              * Format: date-time
@@ -766,13 +772,9 @@ export interface components {
             timestamp?: string;
         };
         CoggedResponseCU: {
-            /** @description This field is only set by the PUT /admin/user endpoint when new users are created. it contains the new GraphUser UIDs in plaintext (i.e. not as AuthzData identifiers). */
+            /** @description This field is only set by the PUT /admin/user endpoint when new users are created. It contains the new GraphUser UIDs in plaintext (i.e. not as AuthzData identifiers), keyed by the placeholder the server assigned to each new user — always the single literal key "newuser" for PUT /admin/user. */
             created_uids?: {
-                /**
-                 * @description UID of newly created user
-                 * @example 0x234
-                 */
-                new?: string;
+                [key: string]: string;
             };
             /**
              * Format: date-time

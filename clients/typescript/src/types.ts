@@ -34,20 +34,19 @@ export type CoggedResponseEmpty = Schemas["CoggedResponseEmpty"];
 export type NodeEdgeData = Schemas["NodeEdgeData"];
 
 /**
- * Response from node-create endpoints. The spec models created_nodes with a single
- * example key; in practice it is keyed by the placeholder uids you supplied, so the
- * client widens it to a record.
+ * Response from the node-create endpoints. The keys of created_nodes depend on which
+ * endpoint you called: createNodes (PUT /graph/nodes/{parent}) echoes back the
+ * $placeholder uids you supplied, while createUserNode (PUT /user/node) always uses the
+ * single literal key "new" — the server substitutes its own placeholder for the one
+ * node it creates, so the placeholder you sent is not echoed back.
  */
-export interface CoggedResponseCN {
-  created_nodes?: Record<string, NodeEdgeData>;
-  timestamp?: string;
-}
+export type CoggedResponseCN = Schemas["CoggedResponseCN"];
 
-/** Response from PUT /admin/user: created_uids maps your placeholder key to the new uid. */
-export interface CoggedResponseCU {
-  created_uids?: Record<string, string>;
-  timestamp?: string;
-}
+/**
+ * Response from PUT /admin/user: created_uids maps the server-assigned placeholder to
+ * the new user's uid. That key is always the literal "newuser" for this endpoint.
+ */
+export type CoggedResponseCU = Schemas["CoggedResponseCU"];
 
 // --- model types ---
 export type GraphNode = Schemas["GraphNode"];

@@ -28,11 +28,22 @@ const cogged = new CoggedClient({ baseUrl: "http://localhost:8090" });
 await cogged.login("alice", "s3cr3t-password");
 
 // Create a node under the user, then read the AuthzData the server assigns it.
-// created_nodes is keyed by the placeholder uid ("$inbox") you supplied.
+// createUserNode always keys created_nodes by the literal "new" — the server replaces
+// the placeholder uid you supplied. (createNodes, below, keys by your placeholders.)
 const created = await cogged.createUserNode({
   node: { uid: "$inbox", ty: "inbox", s1: "Alice's inbox", r: true },
 });
-const inboxAd = created.created_nodes?.["$inbox"]?.ad; // opaque AuthzData token
+const inboxAd = created.created_nodes?.["new"]?.ad; // opaque AuthzData token
+
+// Create a subgraph under that node — here created_nodes IS keyed by the placeholders
+// ("$msg1", "$msg2") you supplied.
+const msgs = await cogged.createNodes(inboxAd!, {
+  nodes: [
+    { uid: "$msg1", ty: "msg", s1: "hello", r: true },
+    { uid: "$msg2", ty: "msg", s1: "world", r: true },
+  ],
+});
+const msg1Ad = msgs.created_nodes?.["$msg1"]?.ad;
 
 // List the user's own nodes.
 const mine = await cogged.listNodes("own", { select: ["id", "ty", "s1"] });
