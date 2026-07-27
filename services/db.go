@@ -934,12 +934,17 @@ func getUidOrSafeTempUid(_uid string) string {
 	return id
 }
 
-func makeSafeUid(gb cm.GraphBaser, count int, safeKeyToTempKeyMap *map[string]string) {
+// makeSafeUid rewrites a node's uid to something Dgraph will accept: a real 0x uid passes
+// through, anything else becomes a blank node keyed by a hash of the original string, which
+// safeKeyToTempKeyMap records so the caller's key can be restored in the response.
+//
+// Note this makes the uid a pure function of the original string, so two nodes with the
+// same uid — including two with no uid at all — map to the same blank node. That collision
+// is rejected up front by checkUpsertNodeList rather than handled here. (An earlier
+// "_anon%d" fallback for empty uids was inert: it assigned a name that the next line
+// immediately overwrote with the hash of the original, still-empty string.)
+func makeSafeUid(gb cm.GraphBaser, safeKeyToTempKeyMap *map[string]string) {
 	nUid := gb.GetUid()
-
-	if strings.TrimSpace(nUid) == "" {
-		gb.SetUid(fmt.Sprintf("_anon%d", count))
-	}
 
 	uidOrSafeUid := getUidOrSafeTempUid(nUid)
 	if strings.HasPrefix(uidOrSafeUid, "_:") {
@@ -949,16 +954,16 @@ func makeSafeUid(gb cm.GraphBaser, count int, safeKeyToTempKeyMap *map[string]st
 }
 
 func makeSafeUids(dgraphNodeList *[]*cm.GraphNode, safeKeyToTempKeyMap *map[string]string) {
-	for count, n := range *dgraphNodeList {
+	for _, n := range *dgraphNodeList {
 		var gb cm.GraphBaser = n
-		makeSafeUid(gb, count, safeKeyToTempKeyMap)
+		makeSafeUid(gb, safeKeyToTempKeyMap)
 	}
 }
 
 func makeSafeUserUids(dgraphUserList *[]*cm.GraphUser, safeKeyToTempKeyMap *map[string]string) {
-	for count, n := range *dgraphUserList {
+	for _, n := range *dgraphUserList {
 		var gb cm.GraphBaser = n
-		makeSafeUid(gb, count, safeKeyToTempKeyMap)
+		makeSafeUid(gb, safeKeyToTempKeyMap)
 	}
 }
 
@@ -987,6 +992,16 @@ func checkUpsertNodeList(nodeList *[]*cm.GraphNode) error {
 	for _, n := range *nodeList {
 		if n == nil {
 			return DBError{Info: "nodes list contains a null entry"}
+		}
+		// A temporary uid names exactly one new node. Two nodes sharing one hash to the
+		// same Dgraph blank node and silently collapse into a single node holding
+		// whichever values came last — the caller loses a node and is never told, since
+		// created_nodes just has one fewer entry than they sent.
+		//
+		// Real 0x uids are exempt: those address a node that already exists, and naming
+		// one twice is a well-defined multi-part update rather than a lost node.
+		if !ValidateUid(strings.TrimSpace(n.Uid)) && defined[n.Uid] {
+			return DBError{Info: fmt.Sprintf("duplicate temporary uid %q: each new node needs its own placeholder", n.Uid)}
 		}
 		defined[n.Uid] = true
 	}

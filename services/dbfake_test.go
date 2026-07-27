@@ -657,6 +657,19 @@ func TestUpsertNodesRejectsUnprocessableLists(t *testing.T) {
 		{"null node", []*cm.GraphNode{nil}},
 		{"null node among valid ones", []*cm.GraphNode{cm.NewGraphNodeJustUID("$a"), nil}},
 		{"null out-edge", []*cm.GraphNode{nilEdge()}},
+		// two nodes sharing a placeholder hash to one Dgraph blank node and silently
+		// collapse into a single node holding whichever values came last
+		{"duplicate temp uid", []*cm.GraphNode{
+			cm.NewGraphNodeJustUID("$a"), cm.NewGraphNodeJustUID("$a"),
+		}},
+		{"duplicate temp uid, not adjacent", []*cm.GraphNode{
+			cm.NewGraphNodeJustUID("$a"), cm.NewGraphNodeJustUID("$b"), cm.NewGraphNodeJustUID("$a"),
+		}},
+		// an empty uid is just another temp key: it hashes to md5(""), so two of them
+		// collide the same way
+		{"two nodes with no uid", []*cm.GraphNode{
+			cm.NewGraphNodeJustUID(""), cm.NewGraphNodeJustUID(""),
+		}},
 	}
 
 	for _, tc := range cases {
@@ -695,6 +708,26 @@ func TestUpsertNodesAcceptsValidEdgeShapes(t *testing.T) {
 	}
 	if resp.CreatedNodes["$parent"] == nil || resp.CreatedNodes["$child"] == nil {
 		t.Errorf("both new nodes should be in created_nodes, got %+v", resp.CreatedNodes)
+	}
+
+	// A real uid repeated is a multi-part update of one existing node, not a lost node:
+	// Dgraph mints nothing for it, so it must stay allowed.
+	dup := []*cm.GraphNode{cm.NewGraphNodeJustUID("0x2a"), cm.NewGraphNodeJustUID("0x2a")}
+	fdup := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{}}}
+	if _, err := newFakeDB(fdup).UpsertNodes(&dup); err != nil {
+		t.Errorf("repeating an existing node's real uid should be allowed, got %v", err)
+	}
+	if fdup.lastMutation == nil {
+		t.Error("the update should have been written")
+	}
+
+	// A single node with no uid still works — only a collision is a problem.
+	anon := []*cm.GraphNode{cm.NewGraphNodeJustUID("")}
+	fanon := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{
+		sec.MD5SumHex([]byte("")): "0x7",
+	}}}
+	if _, err := newFakeDB(fanon).UpsertNodes(&anon); err != nil {
+		t.Errorf("a single uid-less node should be allowed, got %v", err)
 	}
 }
 

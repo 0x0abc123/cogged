@@ -295,6 +295,9 @@ func TestDefaultHandler(t *testing.T) {
 				{"null node", `{"nodes":[null]}`, http.StatusBadRequest},
 				{"null node among valid", `{"nodes":[{"uid":"$x","ty":"msg"},null]}`, http.StatusBadRequest},
 				{"null out-edge", `{"nodes":[{"uid":"$x","ty":"msg","e":[null]}]}`, http.StatusBadRequest},
+				// two nodes sharing a placeholder used to collapse into one, losing a
+				// node silently; all uids are valid placeholders so Validate passes
+				{"duplicate placeholder", `{"nodes":[{"uid":"$x","ty":"msg","s1":"one"},{"uid":"$x","ty":"msg","s1":"two"}]}`, http.StatusOK},
 			}
 			for _, tc := range cases {
 				rr := makeRequest(t, dh, json.RawMessage(tc.body), "PUT", "/graph/nodes/"+chatsAD, bearerTokenUser1, tc.code)
