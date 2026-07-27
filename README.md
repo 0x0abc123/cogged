@@ -19,6 +19,9 @@ More detailed documentation in relation to the above points and that explains ho
 - Golang 1.26 or higher
 - Dgraph v25.3.1
 
+> Upgrading from a pre-2.0 deployment (Dgraph v22)? See [MIGRATION.md](./MIGRATION.md) — it
+> requires an export/import migration of the database, not a drop-in binary swap.
+
 ### Dgraph
 
 Install Dgraph binaries as per the guidance at https://dgraph.io/docs/deploy/installation/download/, or see a summary below:
