@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	cm "cogged/models"
 	req "cogged/requests"
 	sec "cogged/security"
 
@@ -628,5 +629,125 @@ func TestQueryWithOptionsEmptyRootIDs(t *testing.T) {
 	resp := db.QueryWithOptions(q, NODENODE, nil, nil)
 	if resp.Error == "" {
 		t.Error("empty root ids (non-root query) should return an error response")
+	}
+}
+
+// UpsertNodes used to nil-deref — panicking the handler and dropping the connection — on
+// two shapes an ordinary API request can produce. Each must now come back as an error
+// response, with nothing written.
+func TestUpsertNodesRejectsUnprocessableLists(t *testing.T) {
+	ghost := func() *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID("$a")
+		n.OutEdges = &[]*cm.GraphNode{cm.NewGraphNodeJustUID("$ghost")}
+		return n
+	}
+	nilEdge := func() *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID("$a")
+		n.OutEdges = &[]*cm.GraphNode{nil}
+		return n
+	}
+
+	cases := []struct {
+		name string
+		list []*cm.GraphNode
+	}{
+		// an out-edge to a temp uid no node defines: Dgraph mints an ownerless orphan and
+		// returns a uid that has no originating node to describe it
+		{"edge to undefined temp uid", []*cm.GraphNode{ghost()}},
+		{"null node", []*cm.GraphNode{nil}},
+		{"null node among valid ones", []*cm.GraphNode{cm.NewGraphNodeJustUID("$a"), nil}},
+		{"null out-edge", []*cm.GraphNode{nilEdge()}},
+		// two nodes sharing a placeholder hash to one Dgraph blank node and silently
+		// collapse into a single node holding whichever values came last
+		{"duplicate temp uid", []*cm.GraphNode{
+			cm.NewGraphNodeJustUID("$a"), cm.NewGraphNodeJustUID("$a"),
+		}},
+		{"duplicate temp uid, not adjacent", []*cm.GraphNode{
+			cm.NewGraphNodeJustUID("$a"), cm.NewGraphNodeJustUID("$b"), cm.NewGraphNodeJustUID("$a"),
+		}},
+		// an empty uid is just another temp key: it hashes to md5(""), so two of them
+		// collide the same way
+		{"two nodes with no uid", []*cm.GraphNode{
+			cm.NewGraphNodeJustUID(""), cm.NewGraphNodeJustUID(""),
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{}}}
+			list := tc.list
+			resp, err := newFakeDB(fake).UpsertNodes(&list)
+			if err == nil {
+				t.Error("expected an error")
+			}
+			if resp == nil || resp.Error == "" {
+				t.Errorf("expected an error response, got %+v", resp)
+			}
+			if fake.lastMutation != nil {
+				t.Error("nothing should have been written")
+			}
+		})
+	}
+}
+
+func TestUpsertNodesAcceptsValidEdgeShapes(t *testing.T) {
+	// a temp uid defined by another node in the same request, and an edge to an existing
+	// node by real uid, are both fine
+	child := cm.NewGraphNodeJustUID("$child")
+	parent := cm.NewGraphNodeJustUID("$parent")
+	parent.OutEdges = &[]*cm.GraphNode{cm.NewGraphNodeJustUID("$child"), cm.NewGraphNodeJustUID("0x2a")}
+	list := []*cm.GraphNode{parent, child}
+
+	fake := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{
+		sec.MD5SumHex([]byte("$parent")): "0x1",
+		sec.MD5SumHex([]byte("$child")):  "0x2",
+	}}}
+	resp, err := newFakeDB(fake).UpsertNodes(&list)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.CreatedNodes["$parent"] == nil || resp.CreatedNodes["$child"] == nil {
+		t.Errorf("both new nodes should be in created_nodes, got %+v", resp.CreatedNodes)
+	}
+
+	// A real uid repeated is a multi-part update of one existing node, not a lost node:
+	// Dgraph mints nothing for it, so it must stay allowed.
+	dup := []*cm.GraphNode{cm.NewGraphNodeJustUID("0x2a"), cm.NewGraphNodeJustUID("0x2a")}
+	fdup := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{}}}
+	if _, err := newFakeDB(fdup).UpsertNodes(&dup); err != nil {
+		t.Errorf("repeating an existing node's real uid should be allowed, got %v", err)
+	}
+	if fdup.lastMutation == nil {
+		t.Error("the update should have been written")
+	}
+
+	// A single node with no uid still works — only a collision is a problem.
+	anon := []*cm.GraphNode{cm.NewGraphNodeJustUID("")}
+	fanon := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{
+		sec.MD5SumHex([]byte("")): "0x7",
+	}}}
+	if _, err := newFakeDB(fanon).UpsertNodes(&anon); err != nil {
+		t.Errorf("a single uid-less node should be allowed, got %v", err)
+	}
+}
+
+// Defence in depth: even if a uid with no originating node reaches the response loop, it
+// must be skipped rather than dereferenced.
+func TestUpsertNodesSkipsUnmappedMutationUid(t *testing.T) {
+	list := []*cm.GraphNode{cm.NewGraphNodeJustUID("$a")}
+	fake := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{
+		sec.MD5SumHex([]byte("$a")): "0x1",
+		"a-key-nothing-maps-to":     "0x99",
+	}}}
+
+	resp, err := newFakeDB(fake).UpsertNodes(&list)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.CreatedNodes["$a"] == nil || resp.CreatedNodes["$a"].Uid != "0x1" {
+		t.Errorf("the known node should still be returned, got %+v", resp.CreatedNodes)
+	}
+	if len(resp.CreatedNodes) != 1 {
+		t.Errorf("the unmapped uid should be skipped, got %+v", resp.CreatedNodes)
 	}
 }

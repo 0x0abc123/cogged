@@ -934,12 +934,17 @@ func getUidOrSafeTempUid(_uid string) string {
 	return id
 }
 
-func makeSafeUid(gb cm.GraphBaser, count int, safeKeyToTempKeyMap *map[string]string) {
+// makeSafeUid rewrites a node's uid to something Dgraph will accept: a real 0x uid passes
+// through, anything else becomes a blank node keyed by a hash of the original string, which
+// safeKeyToTempKeyMap records so the caller's key can be restored in the response.
+//
+// Note this makes the uid a pure function of the original string, so two nodes with the
+// same uid — including two with no uid at all — map to the same blank node. That collision
+// is rejected up front by checkUpsertNodeList rather than handled here. (An earlier
+// "_anon%d" fallback for empty uids was inert: it assigned a name that the next line
+// immediately overwrote with the hash of the original, still-empty string.)
+func makeSafeUid(gb cm.GraphBaser, safeKeyToTempKeyMap *map[string]string) {
 	nUid := gb.GetUid()
-
-	if strings.TrimSpace(nUid) == "" {
-		gb.SetUid(fmt.Sprintf("_anon%d", count))
-	}
 
 	uidOrSafeUid := getUidOrSafeTempUid(nUid)
 	if strings.HasPrefix(uidOrSafeUid, "_:") {
@@ -949,16 +954,16 @@ func makeSafeUid(gb cm.GraphBaser, count int, safeKeyToTempKeyMap *map[string]st
 }
 
 func makeSafeUids(dgraphNodeList *[]*cm.GraphNode, safeKeyToTempKeyMap *map[string]string) {
-	for count, n := range *dgraphNodeList {
+	for _, n := range *dgraphNodeList {
 		var gb cm.GraphBaser = n
-		makeSafeUid(gb, count, safeKeyToTempKeyMap)
+		makeSafeUid(gb, safeKeyToTempKeyMap)
 	}
 }
 
 func makeSafeUserUids(dgraphUserList *[]*cm.GraphUser, safeKeyToTempKeyMap *map[string]string) {
-	for count, n := range *dgraphUserList {
+	for _, n := range *dgraphUserList {
 		var gb cm.GraphBaser = n
-		makeSafeUid(gb, count, safeKeyToTempKeyMap)
+		makeSafeUid(gb, safeKeyToTempKeyMap)
 	}
 }
 
@@ -966,10 +971,70 @@ func ValidateUid(uid string) bool {
 	return rgxUid.MatchString(strings.ToLower(uid))
 }
 
+// checkUpsertNodeList rejects node lists that UpsertNodes cannot process safely. Both cases
+// were reachable from an ordinary API request and crashed the handler on a nil dereference:
+//
+//   - A null entry in "nodes" or in a node's "e" array. JSON null unmarshals to a nil
+//     *GraphNode.
+//   - An out-edge naming a temporary uid that no node in the same request defines. Dgraph
+//     mints a blank node for such a reference, but it gets no owner, sgi or permission
+//     bits, so the caller could never read it back — an orphan. Worse, its returned uid has
+//     no originating node to describe it, which is what produced the nil dereference when
+//     building the created_nodes response.
+//
+// Edges to nodes that already exist are unaffected: they carry a real 0x uid, Dgraph does
+// not mint anything for them, and they never appear in the mutation response.
+func checkUpsertNodeList(nodeList *[]*cm.GraphNode) error {
+	if nodeList == nil {
+		return nil
+	}
+	defined := make(map[string]bool, len(*nodeList))
+	for _, n := range *nodeList {
+		if n == nil {
+			return DBError{Info: "nodes list contains a null entry"}
+		}
+		// A temporary uid names exactly one new node. Two nodes sharing one hash to the
+		// same Dgraph blank node and silently collapse into a single node holding
+		// whichever values came last — the caller loses a node and is never told, since
+		// created_nodes just has one fewer entry than they sent.
+		//
+		// Real 0x uids are exempt: those address a node that already exists, and naming
+		// one twice is a well-defined multi-part update rather than a lost node.
+		if !ValidateUid(strings.TrimSpace(n.Uid)) && defined[n.Uid] {
+			return DBError{Info: fmt.Sprintf("duplicate temporary uid %q: each new node needs its own placeholder", n.Uid)}
+		}
+		defined[n.Uid] = true
+	}
+	for _, n := range *nodeList {
+		if n.OutEdges == nil {
+			continue
+		}
+		for _, e := range *n.OutEdges {
+			if e == nil {
+				return DBError{Info: "out-edge list contains a null entry"}
+			}
+			// Mirror getUidOrSafeTempUid: a real uid passes through untouched, anything
+			// else becomes a blank node keyed by a hash of the exact string.
+			if ValidateUid(strings.TrimSpace(e.Uid)) {
+				continue
+			}
+			if !defined[e.Uid] {
+				return DBError{Info: fmt.Sprintf("out-edge references undefined temporary uid %q: a temporary uid used in an edge must also appear as a node in the same request", e.Uid)}
+			}
+		}
+	}
+	return nil
+}
+
 func (db *DB) UpsertNodes(nodeList *[]*cm.GraphNode) (*res.CoggedResponse, error) {
 	newUidsToReturn := make(cm.NodePtrDictionary)
 	safeKeyToOriginalMap := make(map[string]string)
 	originalKeyToNodeMap := make(cm.NodePtrDictionary)
+
+	// Runs before anything is mutated, so a bad request changes nothing.
+	if err := checkUpsertNodeList(nodeList); err != nil {
+		return res.CoggedResponseFromError(err.Error()), err
+	}
 
 	for _, n := range *nodeList {
 		originalKeyToNodeMap[n.Uid] = n
@@ -1013,6 +1078,13 @@ func (db *DB) UpsertNodes(nodeList *[]*cm.GraphNode) (*res.CoggedResponse, error
 		originalTempKey := safeKeyToOriginalMap[k]
 		newUid := v
 		originalNode := originalKeyToNodeMap[originalTempKey]
+
+		// Defence in depth: checkUpsertNodeList should make this unreachable, but a uid
+		// with no originating node must never be dereferenced — that crashed the handler.
+		if originalNode == nil {
+			log.Error("upsert returned a uid with no originating node; skipping", map[string]string{"uidKey": k, "uid": newUid})
+			continue
+		}
 
 		newNode := cm.NewGraphNodeJustOwnerAndPerms(originalNode)
 		newNode.Uid = newUid

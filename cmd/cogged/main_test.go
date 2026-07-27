@@ -278,6 +278,46 @@ func TestDefaultHandler(t *testing.T) {
 			chatWithBobAD = result.CreatedNodes["$cwb"].AuthzData
 		}
 
+		// Malformed create-node payloads that used to panic the handler on a nil
+		// dereference and drop the connection. Each must come back as a normal response
+		// carrying an error. ServeHTTP is called directly here, so a panic would fail the
+		// test outright rather than being swallowed by net/http's per-connection recovery.
+		{
+			cases := []struct {
+				name string
+				body string
+				code int // 400 when Validate() rejects it, 200-with-error from the DB layer
+			}{
+				// all uids are $-placeholders so Validate passes; the DB layer refuses it
+				// because no node in the request defines $ghost
+				{"edge to undefined temp uid", `{"nodes":[{"uid":"$x","ty":"msg","e":[{"uid":"$ghost"}]}]}`, http.StatusOK},
+				// JSON null decodes to a nil *GraphNode, now rejected during validation
+				{"null node", `{"nodes":[null]}`, http.StatusBadRequest},
+				{"null node among valid", `{"nodes":[{"uid":"$x","ty":"msg"},null]}`, http.StatusBadRequest},
+				{"null out-edge", `{"nodes":[{"uid":"$x","ty":"msg","e":[null]}]}`, http.StatusBadRequest},
+				// two nodes sharing a placeholder used to collapse into one, losing a
+				// node silently; all uids are valid placeholders so Validate passes
+				{"duplicate placeholder", `{"nodes":[{"uid":"$x","ty":"msg","s1":"one"},{"uid":"$x","ty":"msg","s1":"two"}]}`, http.StatusOK},
+			}
+			for _, tc := range cases {
+				rr := makeRequest(t, dh, json.RawMessage(tc.body), "PUT", "/graph/nodes/"+chatsAD, bearerTokenUser1, tc.code)
+				if tc.code != http.StatusOK {
+					continue
+				}
+				var result res.CoggedResponse
+				if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
+					t.Errorf("%s: response was not valid JSON: %v", tc.name, err)
+					continue
+				}
+				if result.Error == "" {
+					t.Errorf("%s: expected an error in the response, got %s", tc.name, dump(result))
+				}
+				if len(result.CreatedNodes) != 0 {
+					t.Errorf("%s: nothing should have been created, got %s", tc.name, dump(result.CreatedNodes))
+				}
+			}
+		}
+
 		user2uname := "bob_" + testenv.Random
 		user2psswd := "user2pass"
 		user2uid := ""

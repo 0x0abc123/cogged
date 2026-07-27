@@ -800,7 +800,13 @@ export interface components {
         };
         /** @description create new nodes in the Cogged database */
         CreateNodesRequest: {
-            /** @description The GraphNode objects should have $placeholder type UIDs, and not actual 0xNN UIDs because these are new nodes being created */
+            /**
+             * @description The GraphNode objects should have $placeholder type UIDs, and not actual 0xNN UIDs because these are new nodes being created.
+             *
+             *     Each $placeholder names exactly one new node, so a placeholder must not be repeated across two nodes in the same request. Both would resolve to the same new node and collapse into one holding whichever values came last, silently losing a node, so the request is rejected instead.
+             *
+             *     A $placeholder used in a node's "e" (out-edges) must also appear as the uid of a node in the same request. An edge naming a placeholder that nothing defines is rejected: Dgraph would create a node for it with no owner, share group or permission bits, which the caller could never read back. Edges to nodes that already exist use their real 0xNN uid and are unaffected. Null entries in "nodes" or in an "e" array are rejected with 400.
+             */
             nodes?: components["schemas"]["GraphNodeNew"][];
         };
         CreateUserRequest: {

@@ -739,3 +739,57 @@ func TestDBGeoFilterClause(t *testing.T) {
 		t.Errorf("geo clause must still be read-filtered; stranger saw %d nodes", len(sr.ResultNodes))
 	}
 }
+
+// TestDBDuplicateTempUidRejected guards against silent data loss. Two nodes sharing a
+// placeholder hash to the same Dgraph blank node, so before this was rejected the pair
+// collapsed into one node carrying whichever values came last — verified against a real
+// Dgraph: sending 2 nodes produced 1 node holding only the second node's id and s1, and a
+// created_nodes map with a single entry. Nothing told the caller a node had vanished.
+func TestDBDuplicateTempUidRejected(t *testing.T) {
+	db, _ := dbtest.MustStart(t)
+	rnd, _ := sec.GenerateRandomBytes(5)
+	suffix := fmt.Sprintf("%x", rnd)
+
+	mk := func(uid, id, s1 string) *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID(uid)
+		n.Id, n.Type, n.String1 = strp(id+"_"+suffix), strp("dup"), strp(s1)
+		return n
+	}
+
+	dupes := []*cm.GraphNode{mk("$a", "first", "value-one"), mk("$a", "second", "value-two")}
+	resp, err := db.UpsertNodes(&dupes)
+	if err == nil {
+		t.Error("duplicate placeholders should be refused")
+	}
+	if resp == nil || resp.Error == "" {
+		t.Errorf("expected an error response, got %+v", resp)
+	}
+
+	// and nothing was written
+	r := db.QueryWithOptions(&req.QueryRequest{
+		RootQuery: &req.QueryRequestClause{Field: "ty", Op: "eq", Val: "dup"},
+		Select:    []string{"id"},
+	}, svc.NODENODE, adminUAD(), nil)
+	if r.Error != "" {
+		t.Fatalf("verification query error: %s", r.Error)
+	}
+	if len(r.ResultNodes) != 0 {
+		t.Errorf("a rejected upsert must write nothing, found %d nodes", len(r.ResultNodes))
+	}
+
+	// distinct placeholders still create one node each
+	distinct := []*cm.GraphNode{mk("$a", "first", "value-one"), mk("$b", "second", "value-two")}
+	if _, err := db.UpsertNodes(&distinct); err != nil {
+		t.Fatalf("distinct placeholders should be accepted: %v", err)
+	}
+	r = db.QueryWithOptions(&req.QueryRequest{
+		RootQuery: &req.QueryRequestClause{Field: "ty", Op: "eq", Val: "dup"},
+		Select:    []string{"id"},
+	}, svc.NODENODE, adminUAD(), nil)
+	if len(r.ResultNodes) != 2 {
+		t.Errorf("two distinct placeholders should create 2 nodes, got %d", len(r.ResultNodes))
+	}
+	if !findByID(r.ResultNodes, "first_"+suffix) || !findByID(r.ResultNodes, "second_"+suffix) {
+		t.Errorf("both nodes should survive with their own data, got %+v", r.ResultNodes)
+	}
+}
