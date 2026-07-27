@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	cm "cogged/models"
 	req "cogged/requests"
 	sec "cogged/security"
 
@@ -628,5 +629,92 @@ func TestQueryWithOptionsEmptyRootIDs(t *testing.T) {
 	resp := db.QueryWithOptions(q, NODENODE, nil, nil)
 	if resp.Error == "" {
 		t.Error("empty root ids (non-root query) should return an error response")
+	}
+}
+
+// UpsertNodes used to nil-deref — panicking the handler and dropping the connection — on
+// two shapes an ordinary API request can produce. Each must now come back as an error
+// response, with nothing written.
+func TestUpsertNodesRejectsUnprocessableLists(t *testing.T) {
+	ghost := func() *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID("$a")
+		n.OutEdges = &[]*cm.GraphNode{cm.NewGraphNodeJustUID("$ghost")}
+		return n
+	}
+	nilEdge := func() *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID("$a")
+		n.OutEdges = &[]*cm.GraphNode{nil}
+		return n
+	}
+
+	cases := []struct {
+		name string
+		list []*cm.GraphNode
+	}{
+		// an out-edge to a temp uid no node defines: Dgraph mints an ownerless orphan and
+		// returns a uid that has no originating node to describe it
+		{"edge to undefined temp uid", []*cm.GraphNode{ghost()}},
+		{"null node", []*cm.GraphNode{nil}},
+		{"null node among valid ones", []*cm.GraphNode{cm.NewGraphNodeJustUID("$a"), nil}},
+		{"null out-edge", []*cm.GraphNode{nilEdge()}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{}}}
+			list := tc.list
+			resp, err := newFakeDB(fake).UpsertNodes(&list)
+			if err == nil {
+				t.Error("expected an error")
+			}
+			if resp == nil || resp.Error == "" {
+				t.Errorf("expected an error response, got %+v", resp)
+			}
+			if fake.lastMutation != nil {
+				t.Error("nothing should have been written")
+			}
+		})
+	}
+}
+
+func TestUpsertNodesAcceptsValidEdgeShapes(t *testing.T) {
+	// a temp uid defined by another node in the same request, and an edge to an existing
+	// node by real uid, are both fine
+	child := cm.NewGraphNodeJustUID("$child")
+	parent := cm.NewGraphNodeJustUID("$parent")
+	parent.OutEdges = &[]*cm.GraphNode{cm.NewGraphNodeJustUID("$child"), cm.NewGraphNodeJustUID("0x2a")}
+	list := []*cm.GraphNode{parent, child}
+
+	fake := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{
+		sec.MD5SumHex([]byte("$parent")): "0x1",
+		sec.MD5SumHex([]byte("$child")):  "0x2",
+	}}}
+	resp, err := newFakeDB(fake).UpsertNodes(&list)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.CreatedNodes["$parent"] == nil || resp.CreatedNodes["$child"] == nil {
+		t.Errorf("both new nodes should be in created_nodes, got %+v", resp.CreatedNodes)
+	}
+}
+
+// Defence in depth: even if a uid with no originating node reaches the response loop, it
+// must be skipped rather than dereferenced.
+func TestUpsertNodesSkipsUnmappedMutationUid(t *testing.T) {
+	list := []*cm.GraphNode{cm.NewGraphNodeJustUID("$a")}
+	fake := &fakeClient{mutateResp: &api.Response{Uids: map[string]string{
+		sec.MD5SumHex([]byte("$a")): "0x1",
+		"a-key-nothing-maps-to":     "0x99",
+	}}}
+
+	resp, err := newFakeDB(fake).UpsertNodes(&list)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.CreatedNodes["$a"] == nil || resp.CreatedNodes["$a"].Uid != "0x1" {
+		t.Errorf("the known node should still be returned, got %+v", resp.CreatedNodes)
+	}
+	if len(resp.CreatedNodes) != 1 {
+		t.Errorf("the unmapped uid should be skipped, got %+v", resp.CreatedNodes)
 	}
 }

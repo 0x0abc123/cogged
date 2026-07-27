@@ -69,6 +69,23 @@ func TestCheckUidsArePlaceholders(t *testing.T) {
 	if CheckUidsArePlaceholders(&badChild) {
 		t.Error("real uid in a child edge should fail")
 	}
+
+	// Regression: JSON null in "nodes" or "e" decodes to a nil *GraphNode. Dereferencing
+	// it here used to panic the handler before validation could reject the request.
+	nilRoot := []*cm.GraphNode{nil}
+	if CheckUidsArePlaceholders(&nilRoot) {
+		t.Error("a null node should fail validation")
+	}
+
+	nilChild := []*cm.GraphNode{ph("$1", nil)}
+	if CheckUidsArePlaceholders(&nilChild) {
+		t.Error("a null out-edge should fail validation")
+	}
+
+	mixed := []*cm.GraphNode{ph("$1"), nil}
+	if CheckUidsArePlaceholders(&mixed) {
+		t.Error("a null alongside valid nodes should fail validation")
+	}
 }
 
 func TestCreateNodesRequestValidate(t *testing.T) {
@@ -80,6 +97,12 @@ func TestCreateNodesRequestValidate(t *testing.T) {
 	ok := &CreateNodesRequest{Nodes: &nodes}
 	if !ok.Validate() {
 		t.Error("single placeholder node should validate")
+	}
+
+	// {"nodes":[null]} must be rejected, not crash the handler.
+	nullNode := []*cm.GraphNode{nil}
+	if (&CreateNodesRequest{Nodes: &nullNode}).Validate() {
+		t.Error("a request containing a null node should not validate")
 	}
 }
 

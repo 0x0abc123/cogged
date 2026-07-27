@@ -22,9 +22,18 @@ func CheckUidIsPlaceholder(uid string) bool {
 	return strings.HasPrefix(uid, TMP_UID_PREFIX)
 }
 
+// CheckUidsArePlaceholders reports whether every node in the list, and every node reachable
+// through their out-edges, carries a $-prefixed temporary uid.
+//
+// A nil entry is not a placeholder, it is a rejection: JSON null in the "nodes" (or "e")
+// array unmarshals to a nil *GraphNode, and dereferencing it here used to panic the handler
+// before validation could reject the request.
 func CheckUidsArePlaceholders(nl *[]*cm.GraphNode) bool {
 	if nl != nil {
 		for _, n := range *nl {
+			if n == nil {
+				return false
+			}
 			if CheckUidIsPlaceholder((*n).Uid) {
 				if (*n).OutEdges != nil && len(*n.OutEdges) > 0 {
 					cResult := CheckUidsArePlaceholders(n.OutEdges)
