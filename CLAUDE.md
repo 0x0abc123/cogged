@@ -12,6 +12,11 @@ every node carries an owner and per-node permissions, and access is granted by s
 - Module: `cogged` (see `go.mod`), Go 1.26. Dgraph client: `github.com/dgraph-io/dgo/v250`.
 - Entry point / HTTP server: `cmd/cogged/main.go`.
 
+Building an **application frontend** against the TypeScript client rather than working on the
+backend? Read [`docs/frontend-guide.md`](./docs/frontend-guide.md) first — it covers mapping
+domain objects onto the fixed `s1`–`s4`/`t1`/`t2`/`b` predicates, the repository pattern, and
+`m`-timestamp delta sync.
+
 ## Package map
 
 | Package | Responsibility |
