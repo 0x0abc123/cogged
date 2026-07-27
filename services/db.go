@@ -367,6 +367,12 @@ func constructQueryStringAndAddVars(clause req.QueryRequestClause, queryvars *ma
 		}
 		retval = "(" + strings.Join(clStrings, opstr) + ")"
 
+	} else if clause.Geo != nil {
+		// Radius test on `g`, composable with the surrounding and/or. Already validated
+		// by validateGeoClauses, and rendered from parsed float64s, so nothing
+		// client-supplied is interpolated as text and no query var is needed.
+		retval = renderGeoFunc(clause.Geo)
+
 	} else {
 		op := renderOp(clause.Op)
 		field := renderField(clause.Field)
@@ -455,6 +461,22 @@ func renderQueryVarsString(vars *map[string]string) string {
 		retval += ": string"
 	}
 	return retval
+}
+
+// renderQueryParams builds the parameter list for the query block, e.g.
+// "$ids: string, $rdepth: int, $vvab12cd: string", from the fixed parameters a given query
+// shape needs plus one entry per bound value.
+//
+// The value list can legitimately be empty: a geo filter clause is inlined from parsed
+// floats and binds nothing, so a query whose only filter is geo has no $vv vars at all.
+// Joining here rather than interpolating into the template is what keeps that case from
+// emitting a dangling comma, which Dgraph rejects as a parse error.
+func renderQueryParams(fixed []string, vars *map[string]string) string {
+	parts := append([]string{}, fixed...)
+	if v := renderQueryVarsString(vars); v != "" {
+		parts = append(parts, v)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func renderFields(fields []string) string {
@@ -607,17 +629,22 @@ func checkQueryFields(q *req.QueryRequest, uad *sec.UserAuthData) *res.CoggedRes
 	if q.Similar != nil && q.Geo != nil {
 		return res.CoggedResponseFromError("'similar' and 'geo' cannot be combined in one query")
 	}
+	for _, clause := range []*req.QueryRequestClause{q.Filters, q.RootQuery} {
+		if err := validateGeoClauses(clause); err != nil {
+			return res.CoggedResponseFromError(err.Error())
+		}
+	}
 	return nil
 }
 
-// checkGeoFieldNotFiltered rejects a query naming `g` in filters or order_by. No filter op
-// can express a geo predicate — `has` compiles to a regexp and `eq` to a string compare,
-// neither of which Dgraph accepts on a geo value — and geo values are not sortable at all
-// ("Value of type: geo isn't sortable"). Both used to surface as an opaque "DB query
-// failed"; point the caller at the geo block instead. `g` remains valid in `select`.
+// checkGeoFieldNotFiltered rejects a query naming `g` as a clause Field or in order_by. No
+// filter op can express a geo predicate — `has` compiles to a regexp and `eq` to a string
+// compare, neither of which Dgraph accepts on a geo value — and geo values are not sortable
+// at all ("Value of type: geo isn't sortable"). Both used to surface as an opaque "DB query
+// failed"; point the caller at the geo blocks instead. `g` remains valid in `select`.
 func checkGeoFieldNotFiltered(q *req.QueryRequest) *res.CoggedResponse {
 	if queryNamesField(q, GEO_FIELD) {
-		return res.CoggedResponseFromError("field 'g' is a geo predicate: use the 'geo' block for a radius search, it cannot be used in filters or order_by")
+		return res.CoggedResponseFromError("field 'g' is a geo predicate: use a 'geo' block (on the request for a radius search, or on a filter clause to combine proximity with other filters), it cannot be used as a filter field or in order_by")
 	}
 	return nil
 }
@@ -628,35 +655,79 @@ func formatCoord(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
-// renderGeoRootFunc validates a radius search and returns the DQL near() root function.
+// validateGeo range-checks a radius search. Every geo request is validated up front, before
+// any DQL is built, so renderGeoFunc can assume a good value.
+func validateGeo(g *req.QueryGeo) error {
+	if len(g.Point) != 2 {
+		return DBError{Info: "geo point must be [longitude, latitude]"}
+	}
+	lon, lat := g.Point[0], g.Point[1]
+	for _, f := range []float64{lon, lat, g.Distance} {
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return DBError{Info: "geo point and distance must be finite numbers"}
+		}
+	}
+	if lon < -180 || lon > 180 {
+		return DBError{Info: "geo longitude must be between -180 and 180 (point is [longitude, latitude])"}
+	}
+	if lat < -90 || lat > 90 {
+		return DBError{Info: "geo latitude must be between -90 and 90 (point is [longitude, latitude])"}
+	}
+	if g.Distance <= 0 {
+		return DBError{Info: "geo distance must be greater than 0 metres"}
+	}
+	if g.Distance > MAX_GEO_DISTANCE_METRES {
+		return DBError{Info: fmt.Sprintf("geo distance must be at most %.0f metres", MAX_GEO_DISTANCE_METRES)}
+	}
+	return nil
+}
+
+// renderGeoFunc returns the DQL near() call for an already-validated radius search. It is
+// used both as a query root function and inside an @filter clause.
 //
 // Nothing client-supplied reaches the query as text: the coordinates arrive as float64
 // (already parsed by encoding/json) and are re-rendered from those floats, so there is no
 // injection surface to defend — unlike the vector path, which has to regex-validate a
 // client-supplied string before inlining it.
+func renderGeoFunc(g *req.QueryGeo) string {
+	return "near(" + GEO_FIELD + ", [" + formatCoord(g.Point[0]) + ", " + formatCoord(g.Point[1]) + "], " + formatCoord(g.Distance) + ")"
+}
+
+// renderGeoRootFunc validates a radius search and returns it as a DQL root function.
 func renderGeoRootFunc(g *req.QueryGeo) (string, error) {
-	if len(g.Point) != 2 {
-		return "", DBError{Info: "geo point must be [longitude, latitude]"}
+	if err := validateGeo(g); err != nil {
+		return "", err
 	}
-	lon, lat := g.Point[0], g.Point[1]
-	for _, f := range []float64{lon, lat, g.Distance} {
-		if math.IsNaN(f) || math.IsInf(f, 0) {
-			return "", DBError{Info: "geo point and distance must be finite numbers"}
+	return renderGeoFunc(g), nil
+}
+
+// validateGeoClauses checks every geo clause in a filter tree, returning the first problem
+// found. QueryWithOptions runs this before compiling, so constructQueryStringAndAddVars —
+// which has no way to report an error — only ever sees valid geo clauses.
+func validateGeoClauses(clause *req.QueryRequestClause) error {
+	if clause == nil {
+		return nil
+	}
+	if clause.Geo != nil {
+		// Field/Op/Val on a geo clause would be silently dropped; say so instead.
+		if clause.Field != "" || clause.Op != "" || clause.Val != "" {
+			return DBError{Info: "a geo filter clause must not also set field, op or val"}
+		}
+		if err := validateGeo(clause.Geo); err != nil {
+			return err
 		}
 	}
-	if lon < -180 || lon > 180 {
-		return "", DBError{Info: "geo longitude must be between -180 and 180 (point is [longitude, latitude])"}
+	for i := range clause.And {
+		if err := validateGeoClauses(&clause.And[i]); err != nil {
+			return err
+		}
 	}
-	if lat < -90 || lat > 90 {
-		return "", DBError{Info: "geo latitude must be between -90 and 90 (point is [longitude, latitude])"}
+	for i := range clause.Or {
+		if err := validateGeoClauses(&clause.Or[i]); err != nil {
+			return err
+		}
 	}
-	if g.Distance <= 0 {
-		return "", DBError{Info: "geo distance must be greater than 0 metres"}
-	}
-	if g.Distance > MAX_GEO_DISTANCE_METRES {
-		return "", DBError{Info: fmt.Sprintf("geo distance must be at most %.0f metres", MAX_GEO_DISTANCE_METRES)}
-	}
-	return "near(" + GEO_FIELD + ", [" + formatCoord(lon) + ", " + formatCoord(lat) + "], " + formatCoord(g.Distance) + ")", nil
+	return nil
 }
 
 // checkPrivateFieldQueryable rejects a query that filters or orders on the owner-private
@@ -688,6 +759,9 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAut
 
 	query := ""
 	vars := make(map[string]string)
+	// Fixed query parameters for the chosen query shape; bound values are appended by
+	// renderQueryParams below.
+	fixedParams := []string{}
 
 	if q.Similar != nil {
 		// Vector-similarity search: rank nodes by nearness to the query vector using
@@ -760,7 +834,8 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAut
 
 		if recurseDepth > 0 {
 			vars["$rdepth"] = fmt.Sprintf("%d", recurseDepth)
-			query = `query q($ids: string, $rdepth: int, __QVARS__) {
+			fixedParams = append(fixedParams, "$ids: string", "$rdepth: int")
+			query = `query q(__QVARS__) {
 				var(func: uid($ids)) @recurse(depth: $rdepth) 
 				{
 				  NID as uid
@@ -770,7 +845,8 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAut
 				qr(func: uid(NID)__PAGEARGS__)`
 			query = strings.ReplaceAll(query, "__EDGETYPE__", getEdgePredicateName(et))
 		} else {
-			query = `query q($ids: string, __QVARS__) {
+			fixedParams = append(fixedParams, "$ids: string")
+			query = `query q(__QVARS__) {
 				qr(func: uid($ids)__PAGEARGS__)`
 		}
 	}
@@ -795,7 +871,7 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAut
 	}
 	query = strings.ReplaceAll(query, "__FILTERS__", userFilter)
 	query = strings.ReplaceAll(query, "__PAGEARGS__", renderPagination(q))
-	query = strings.ReplaceAll(query, "__QVARS__", renderQueryVarsString(&vars))
+	query = strings.ReplaceAll(query, "__QVARS__", renderQueryParams(fixedParams, &vars))
 
 	sp, err := d.Query(query, &vars)
 	if err != nil {

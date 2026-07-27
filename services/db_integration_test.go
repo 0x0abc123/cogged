@@ -618,3 +618,124 @@ func TestDBGeoRadiusSearch(t *testing.T) {
 		t.Errorf("geo search must still be read-filtered; stranger saw %d nodes", len(sr.ResultNodes))
 	}
 }
+
+// TestDBGeoFilterClause verifies the composable form: a geo clause inside `filters`,
+// combined with a root_ids traversal and with ordinary filters. This is the case the
+// request-level `geo` block cannot express, since that replaces the query root.
+func TestDBGeoFilterClause(t *testing.T) {
+	db, _ := dbtest.MustStart(t)
+	rnd, _ := sec.GenerateRandomBytes(5)
+	suffix := fmt.Sprintf("%x", rnd)
+
+	ures, err := db.UpsertUsers(&[]*cm.GraphUser{{
+		GraphBase: cm.GraphBase{Uid: "owner"}, Username: strp("geoclause_" + suffix),
+		PasswordHash: strp("pw"), Role: strp("user"),
+	}})
+	if err != nil {
+		t.Fatalf("UpsertUsers: %v", err)
+	}
+	ownerUID := ures.CreatedUids["owner"]
+	owner := &cm.GraphUser{GraphBase: cm.GraphBase{Uid: ownerUID}}
+	yes := true
+
+	// A folder with four children: two cafes and a park near the Opera House, and a cafe
+	// in Perth. A second, unlinked cafe sits next door to test that the traversal scopes.
+	mk := func(key, id, ty string, lon, lat float64) *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID(key)
+		n.Owner, n.Id, n.Type, n.PermRead = owner, strp(id+"_"+suffix), strp(ty), &yes
+		n.Location = &cm.Geoloc{Type: "Point", Coords: []float64{lon, lat}}
+		return n
+	}
+	folder := cm.NewGraphNodeJustUID("folder")
+	folder.Owner, folder.Id, folder.Type, folder.PermRead = owner, strp("folder_"+suffix), strp(typeFolder), &yes
+	nearCafe := mk("nearcafe", "nearcafe", "cafe", 151.2067, -33.8715)      // QVB, ~1.8km
+	farCafe := mk("farcafe", "farcafe", "cafe", 115.8575, -31.9505)         // Perth
+	nearPark := mk("nearpark", "nearpark", "park", 151.2153, -33.8568)      // Opera House
+	outside := mk("outsidecafe", "outsidecafe", "cafe", 151.2067, -33.8715) // near, but not linked
+	// Edges must be separate stub objects, not the node pointers themselves: UpsertNodes
+	// rewrites the uid of everything it walks, so reusing a pointer double-rewrites it.
+	folder.OutEdges = &[]*cm.GraphNode{
+		cm.NewGraphNodeJustUID("nearcafe"),
+		cm.NewGraphNodeJustUID("farcafe"),
+		cm.NewGraphNodeJustUID("nearpark"),
+	}
+
+	nodes := []*cm.GraphNode{folder, nearCafe, farCafe, nearPark, outside}
+	upserted, err := db.UpsertNodes(&nodes)
+	if err != nil {
+		t.Fatalf("UpsertNodes: %v", err)
+	}
+	if upserted.CreatedNodes["folder"] == nil {
+		t.Fatalf("upsert did not return the folder: %+v", upserted.CreatedNodes)
+	}
+	folderUID := upserted.CreatedNodes["folder"].Uid
+
+	ownerUAD := &sec.UserAuthData{Uid: ownerUID, Role: "user"}
+	sydney := &req.QueryGeo{Point: []float64{151.2153, -33.8568}, Distance: 5000}
+
+	// geo clause + traversal: only nodes under the folder AND inside the radius
+	r := db.QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{folderUID}, Depth: 5, Select: []string{"id"},
+		Filters: &req.QueryRequestClause{Geo: sydney},
+	}, svc.NODENODE, ownerUAD, nil)
+	if r.Error != "" {
+		t.Fatalf("geo clause + traversal error: %s", r.Error)
+	}
+	if !findByID(r.ResultNodes, "nearcafe_"+suffix) || !findByID(r.ResultNodes, "nearpark_"+suffix) {
+		t.Errorf("expected the two nearby children, got %d nodes", len(r.ResultNodes))
+	}
+	if findByID(r.ResultNodes, "farcafe_"+suffix) {
+		t.Error("the Perth cafe is outside the radius")
+	}
+	if findByID(r.ResultNodes, "outsidecafe_"+suffix) {
+		t.Error("a nearby node not under the folder must not be reachable by the traversal")
+	}
+
+	// geo ANDed with an ordinary filter: nearby AND a cafe, so the park drops out
+	r = db.QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{folderUID}, Depth: 5, Select: []string{"id"},
+		Filters: &req.QueryRequestClause{And: []req.QueryRequestClause{
+			{Field: "ty", Op: "eq", Val: "cafe"},
+			{Geo: sydney},
+		}},
+	}, svc.NODENODE, ownerUAD, nil)
+	if r.Error != "" {
+		t.Fatalf("geo AND filter error: %s", r.Error)
+	}
+	if !findByID(r.ResultNodes, "nearcafe_"+suffix) {
+		t.Error("the nearby cafe should match ty=cafe AND the radius")
+	}
+	if findByID(r.ResultNodes, "nearpark_"+suffix) {
+		t.Error("the park is inside the radius but is not a cafe")
+	}
+	if findByID(r.ResultNodes, "farcafe_"+suffix) {
+		t.Error("the Perth cafe is a cafe but outside the radius")
+	}
+
+	// two radii ORed: Sydney OR Perth pulls the far cafe back in
+	r = db.QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{folderUID}, Depth: 5, Select: []string{"id"},
+		Filters: &req.QueryRequestClause{Or: []req.QueryRequestClause{
+			{Geo: sydney},
+			{Geo: &req.QueryGeo{Point: []float64{115.8575, -31.9505}, Distance: 5000}},
+		}},
+	}, svc.NODENODE, ownerUAD, nil)
+	if r.Error != "" {
+		t.Fatalf("geo OR geo error: %s", r.Error)
+	}
+	if !findByID(r.ResultNodes, "farcafe_"+suffix) || !findByID(r.ResultNodes, "nearcafe_"+suffix) {
+		t.Errorf("OR of two radii should match both cities, got %d nodes", len(r.ResultNodes))
+	}
+
+	// a stranger gets nothing, geo clause or not
+	sr := db.QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{folderUID}, Depth: 5, Select: []string{"id"},
+		Filters: &req.QueryRequestClause{Geo: sydney},
+	}, svc.NODENODE, &sec.UserAuthData{Uid: "0xdeadbeef", Role: "user"}, nil)
+	if sr.Error != "" {
+		t.Fatalf("stranger geo clause error: %s", sr.Error)
+	}
+	if len(sr.ResultNodes) != 0 {
+		t.Errorf("geo clause must still be read-filtered; stranger saw %d nodes", len(sr.ResultNodes))
+	}
+}

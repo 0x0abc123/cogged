@@ -12,6 +12,12 @@ type QueryRequestClause struct {
 	Field string               `json:"field,omitempty"`
 	Op    string               `json:"op,omitempty"`
 	Val   string               `json:"val,omitempty"`
+
+	// Geo, when set, makes this clause a radius test on the `g` predicate instead of a
+	// Field/Op/Val comparison — so proximity can be ANDed and ORed with ordinary filters
+	// and applied to a root_ids traversal, which QueryRequest.Geo (a root function)
+	// cannot. Field/Op/Val must be left unset on a geo clause.
+	Geo *QueryGeo `json:"geo,omitempty"`
 }
 
 type QueryRequest struct {
