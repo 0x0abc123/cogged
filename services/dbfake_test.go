@@ -236,6 +236,82 @@ func TestQueryWithOptionsSimilaritySearch(t *testing.T) {
 	}
 }
 
+// `p` is stripped from responses for non-owners, so it must not be usable as a filter
+// either: eq(p, "guess") would otherwise confirm the value via the result set.
+func TestQueryWithOptionsRejectsPrivateFieldFilter(t *testing.T) {
+	reader := &sec.UserAuthData{Uid: "0x1a", Role: "user"}
+	orderByPrivate := "p"
+
+	cases := []struct {
+		name string
+		q    *req.QueryRequest
+	}{
+		{"top-level filter", &req.QueryRequest{
+			RootIDs: []string{"0x5"},
+			Filters: &req.QueryRequestClause{Field: "p", Op: "eq", Val: "secret"},
+		}},
+		{"nested in and", &req.QueryRequest{
+			RootIDs: []string{"0x5"},
+			Filters: &req.QueryRequestClause{And: []req.QueryRequestClause{
+				{Field: "ty", Op: "eq", Val: "note"},
+				{Or: []req.QueryRequestClause{{Field: "p", Op: "eq", Val: "secret"}}},
+			}},
+		}},
+		{"case-insensitive", &req.QueryRequest{
+			RootIDs: []string{"0x5"},
+			Filters: &req.QueryRequestClause{Field: "P", Op: "eq", Val: "secret"},
+		}},
+		{"order_by", &req.QueryRequest{
+			RootIDs: []string{"0x5"},
+			OrderBy: &orderByPrivate,
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+			resp := newFakeDB(fake).QueryWithOptions(tc.q, NODENODE, reader, nil)
+			if resp.Error == "" {
+				t.Error("non-admin should be refused a query naming p")
+			}
+			if fake.lastQuery != "" {
+				t.Errorf("no query should reach Dgraph, got:\n%s", fake.lastQuery)
+			}
+		})
+	}
+}
+
+func TestQueryWithOptionsAllowsPrivateFieldForAdminAndInSelect(t *testing.T) {
+	// admins may filter on p
+	fadmin := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	admin := &sec.UserAuthData{Uid: "0x1", Role: sec.SYS_ROLE}
+	resp := newFakeDB(fadmin).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"},
+		Filters: &req.QueryRequestClause{Field: "p", Op: "eq", Val: "secret"},
+	}, NODENODE, admin, nil)
+	if resp.Error != "" {
+		t.Errorf("admin filter on p should be allowed, got %q", resp.Error)
+	}
+	if !strings.Contains(fadmin.lastQuery, "eq(p,") {
+		t.Errorf("admin query should filter on p:\n%s", fadmin.lastQuery)
+	}
+
+	// a non-admin may still *select* p — the response layer strips it if they are not
+	// the owner (see responses.CoggedResponse.AuthzDataPack).
+	fuser := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	reader := &sec.UserAuthData{Uid: "0x1a", Role: "user"}
+	resp = newFakeDB(fuser).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"},
+		Select:  []string{"id", "p"},
+	}, NODENODE, reader, nil)
+	if resp.Error != "" {
+		t.Errorf("selecting p should be allowed, got %q", resp.Error)
+	}
+	if !strings.Contains(fuser.lastQuery, "id p") {
+		t.Errorf("select should still include p:\n%s", fuser.lastQuery)
+	}
+}
+
 func TestQueryWithOptionsEmptyRootIDs(t *testing.T) {
 	db := newFakeDB(&fakeClient{queryJSON: []byte(`{"qr":[]}`)})
 	q := &req.QueryRequest{RootIDs: []string{}, Depth: 3}

@@ -53,6 +53,12 @@ const (
 	OP_GTE        string = "ge"
 	OP_LTE        string = "le"
 
+	// PRIVATE_FIELD is the owner-private `p` predicate. It may be named in `select`
+	// (the response layer strips it for callers who are neither the owner nor sys —
+	// see models.GraphNode.RedactPrivateDataFor), but non-admins may not filter or
+	// order by it; see checkPrivateFieldQueryable.
+	PRIVATE_FIELD string = "p"
+
 	MAX_QUERY_RECURSE_DEPTH uint = 20
 
 	DEFAULT_SIMILAR_TOPK uint = 10
@@ -69,6 +75,10 @@ var (
 		OP_LTE:        true,
 	}
 
+	// allowedFields gates every predicate a client may name, in `select` as well as in
+	// filters and order_by. It is deliberately permissive about `p`, because `select`
+	// must still allow it; the narrower rule for the filter/order paths lives in
+	// checkPrivateFieldQueryable, which QueryWithOptions applies before compiling a query.
 	allowedFields = map[string]bool{
 		"e":  true,
 		"ty": true,
@@ -546,7 +556,55 @@ func renderReadAuthzFilter(et EdgeType, uad *sec.UserAuthData, allowedSgis []str
 	return "(" + ownClause + " OR " + sgiClause + ")"
 }
 
+// clauseNamesPrivateField reports whether any clause in the tree filters on `p`.
+func clauseNamesPrivateField(clause *req.QueryRequestClause) bool {
+	if clause == nil {
+		return false
+	}
+	if strings.EqualFold(clause.Field, PRIVATE_FIELD) {
+		return true
+	}
+	for i := range clause.And {
+		if clauseNamesPrivateField(&clause.And[i]) {
+			return true
+		}
+	}
+	for i := range clause.Or {
+		if clauseNamesPrivateField(&clause.Or[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkPrivateFieldQueryable rejects a query that filters or orders on the owner-private
+// `p` predicate unless the caller is an admin. Stripping `p` from responses (see
+// models.GraphNode.RedactPrivateDataFor) hides the value but not its effect on the result
+// set: a shared reader could otherwise send eq(p, "guess") and learn from which nodes come
+// back whether the guess was right, one guess at a time. Ordering leaks the same way.
+//
+// A nil uad means an internal caller with no client-supplied query, and is unrestricted —
+// the same convention renderReadAuthzFilter uses.
+//
+// This is the only guard on the filter/order paths; allowedFields still admits `p` so that
+// `select` keeps working for owners. Any new entry point that compiles a client-supplied
+// clause or order_by must call this first.
+func checkPrivateFieldQueryable(q *req.QueryRequest, uad *sec.UserAuthData) *res.CoggedResponse {
+	if uad == nil || uad.IsAdmin() {
+		return nil
+	}
+	if clauseNamesPrivateField(q.Filters) || clauseNamesPrivateField(q.RootQuery) ||
+		(q.OrderBy != nil && strings.EqualFold(*q.OrderBy, PRIVATE_FIELD)) {
+		return res.CoggedResponseFromError("field 'p' is private and cannot be used in filters or order_by")
+	}
+	return nil
+}
+
 func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAuthData, allowedSgis []string) *res.CoggedResponse {
+	if denied := checkPrivateFieldQueryable(q, uad); denied != nil {
+		return denied
+	}
+
 	query := ""
 	vars := make(map[string]string)
 

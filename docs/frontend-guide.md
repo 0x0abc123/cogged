@@ -136,7 +136,7 @@ compiles `filters` into DQL (`services/db.go`), so a filter is only usable if th
 | `s2` | `string` | `term` | — (see note) | ✗ | Display text you never query on. |
 | `s3` | `string` | `hash` | `eq` | ✗ | **Exact-match facet #1** (status, enum, slug). |
 | `s4` | `string` | `hash` | `eq` | ✗ | **Exact-match facet #2** (foreign key, category). |
-| `p` | `string` | `hash` | `eq` | ✗ | Owner-scoped bookkeeping. **Not a secret** — see §8. |
+| `p` | `string` | `hash` | — (admins only) | ✗ | **Owner-private.** Not readable or filterable by anyone but the owner and admins — see §8. |
 | `b` | `string` | none | — | ✗ | **Overflow.** JSON blob, markdown body, base64. |
 | `n1` `n2` | `number` | none | — | ✗ | Numbers you display or compute with only. |
 | `c` | ISO string | `datetime(hour)` | `eq` `gt` `lt` `ge` `le` | ✓ | Created — **server-set, read-only.** |
@@ -157,7 +157,9 @@ Consequences worth internalising:
   `m`). A "sort order" or "priority rank" must live in `t1`/`t2` if the server is to sort it —
   `n1`/`n2` are unindexed and cannot be filtered *or* sorted. `order_by` on an unsortable predicate
   is rejected by Dgraph and surfaces as a generic 500-ish `"DB query failed"`.
-- **`eq` needs a hash index**, so exact-match facets go in `s3`/`s4`/`ty`/`p`. Dgraph nominally
+- **`eq` needs a hash index**, so exact-match facets go in `s3`/`s4`/`ty`. `p` is hash-indexed too
+  but the API refuses to filter on it unless you are an admin (see §8), so it is **not** a third
+  facet slot — never design a query around it. Dgraph nominally
   permits `eq` against a `term` index, but the semantics are token-based — do not design around
   `eq` on `s1`, `s2`, or `id`.
 - **`b`, `n1`, `n2`, `g`, `s2` are invisible to queries.** That is fine and it is where most of a
@@ -536,9 +538,21 @@ the correct recovery, and a server restart is the usual cause.
 
 ## 8. Sharp edges
 
-- **`p` is not private in practice.** The OpenAPI description says Cogged strips it for non-owners,
-  but no such stripping exists in the code — `p` is returned to any reader that names it in
-  `select`. Do not put secrets there. Use it for owner-scoped bookkeeping only.
+- **`p` is owner-private, and enforced on both the read and the query path.**
+  - *Reads:* the server strips `p` from every node in a response — including nodes hanging off
+    `e`, checked per node — unless the caller owns that node or is a `sys`-role admin
+    (`responses.CoggedResponse.AuthzDataPack`). A shared reader who puts `p` in `select` gets the
+    node back with `p` **absent, not an error**. Write your codec so a missing `p` is a normal
+    case, never a parse failure — the same node will have `p` for its owner and no `p` for
+    everyone else.
+  - *Queries:* non-admins cannot name `p` in `filters` or `order_by` at all. The whole request is
+    rejected with `error: "field 'p' is private and cannot be used in filters or order_by"` before
+    it reaches Dgraph. This closes the oracle that stripping alone leaves open — otherwise
+    `eq(p, "guess")` would confirm a value by changing which nodes come back, even though the
+    value is never returned. It applies to nested `and`/`or` clauses too.
+
+  So `p` is genuinely a private field now, but it is **not a queryable one**: treat it as
+  owner-only bookkeeping you fetch alongside a node, never as a search key.
 - **`vec` cannot be read back.** It is not in the backend's allowed `select`/filter field list. If
   you need the embedding client-side, store a copy in `b`.
 - **`has` has no integration-test coverage.** The unit test confirms `has` compiles to

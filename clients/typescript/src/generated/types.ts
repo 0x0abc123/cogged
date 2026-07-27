@@ -927,7 +927,7 @@ export interface components {
              */
             n2?: number;
             /**
-             * @description user-defined field for private data relating to the node (Cogged strips this from the node data when queried by users other than the owner or system role users)
+             * @description user-defined field for private data relating to the node, visible only to the node owner and to sys role users. Cogged strips it from every node in a response (including nodes nested under e, checked per node) unless the caller owns that node or has the sys role, so a reader granted access via a share edge receives the node without p even if they asked for it in select. Non-admins also cannot name p in a query's filters or order_by - such a request is rejected outright, so the value cannot be inferred from which nodes a filter returns. p is therefore private but not queryable except by admins.
              * @example private data
              */
             p?: string;
@@ -1042,7 +1042,7 @@ export interface components {
              */
             n2?: number;
             /**
-             * @description user-defined field for private data relating to the node (Cogged strips this from the node data when queried by users other than the owner or system role users)
+             * @description user-defined field for private data relating to the node, visible only to the node owner and to sys role users. Cogged strips it from every node in a response (including nodes nested under e, checked per node) unless the caller owns that node or has the sys role, so a reader granted access via a share edge receives the node without p even if they asked for it in select. Non-admins also cannot name p in a query's filters or order_by - such a request is rejected outright, so the value cannot be inferred from which nodes a filter returns. p is therefore private but not queryable except by admins.
              * @example private data
              */
             p?: string;
@@ -1244,6 +1244,8 @@ export interface components {
              *     - t1
              *     - t2
              *     - g
+             *
+             *     Selecting "p" is allowed for any caller, but the value is only returned on nodes the caller owns (or to sys role users); it is stripped from the rest.
              */
             select?: string[];
             /**
@@ -1262,7 +1264,7 @@ export interface components {
              */
             after?: string;
             /**
-             * @description An indexed GraphNode predicate to order results by (e.g. c or m). When unset, results follow Dgraph's default uid order. Field names that are not allowed are ignored.
+             * @description An indexed GraphNode predicate to order results by (e.g. c or m). When unset, results follow Dgraph's default uid order. Field names that are not allowed are ignored, except "p", which is owner-private - ordering by it is restricted to sys role callers and a non-admin request naming it is rejected (see the "field" property of QueryRequestClause).
              * @example c
              */
             order_by?: string;
@@ -1293,7 +1295,7 @@ export interface components {
              *     - e
              *     - ty
              *     - id
-             *     - p
+             *     - p (sys role only)
              *     - s1
              *     - s2
              *     - s3
@@ -1306,6 +1308,8 @@ export interface components {
              *     - t1
              *     - t2
              *     - g
+             *
+             *     "p" holds owner-private data and is not returned to other users, so filtering on it is restricted to sys role callers: a non-admin request naming "p" in any clause (including nested and/or clauses) is rejected with the error "field 'p' is private and cannot be used in filters or order_by", rather than being run. This prevents the value being inferred from which nodes a filter matches.
              * @example id
              */
             field?: string;
@@ -1333,7 +1337,7 @@ export interface components {
              *     - e
              *     - ty
              *     - id
-             *     - p
+             *     - p (sys role only)
              *     - s1
              *     - s2
              *     - s3
@@ -1346,6 +1350,8 @@ export interface components {
              *     - t1
              *     - t2
              *     - g
+             *
+             *     "p" holds owner-private data and is not returned to other users, so filtering on it is restricted to sys role callers: a non-admin request naming "p" in any clause (including nested and/or clauses) is rejected with the error "field 'p' is private and cannot be used in filters or order_by", rather than being run. This prevents the value being inferred from which nodes a filter matches.
              * @example id
              */
             field?: string;

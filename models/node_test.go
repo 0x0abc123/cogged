@@ -114,6 +114,75 @@ func TestAuthzDataPackPropagatesToEdges(t *testing.T) {
 	}
 }
 
+func TestRedactPrivateDataForStripsNodeAndEdges(t *testing.T) {
+	child := nodeWithPerms("0xchild", "0xowner", "sgi-1", "r")
+	child.PrivateData = s("child secret")
+	parent := nodeWithPerms("0xparent", "0xowner", "sgi-1", "r")
+	parent.PrivateData = s("parent secret")
+	parent.String1 = s("keep me")
+	parent.OutEdges = &[]*GraphNode{child}
+
+	parent.RedactPrivateDataFor(&sec.UserAuthData{Uid: "0xother", Role: "user"})
+
+	if parent.PrivateData != nil {
+		t.Error("p should be cleared for a non-owner")
+	}
+	if child.PrivateData != nil {
+		t.Error("redaction should recurse into out-edges")
+	}
+	if parent.String1 == nil || *parent.String1 != "keep me" {
+		t.Error("redaction should leave other fields alone")
+	}
+}
+
+func TestRedactPrivateDataForKeepsOwnerAndAdminData(t *testing.T) {
+	owned := nodeWithPerms("0xabc", "0xowner", "sgi-1", "r")
+	owned.PrivateData = s("secret")
+	owned.RedactPrivateDataFor(&sec.UserAuthData{Uid: "0xowner", Role: "user"})
+	if owned.PrivateData == nil {
+		t.Error("owner should keep p")
+	}
+
+	other := nodeWithPerms("0xdef", "0xsomeoneelse", "sgi-1", "r")
+	other.PrivateData = s("secret")
+	other.RedactPrivateDataFor(&sec.UserAuthData{Uid: "0xroot", Role: sec.SYS_ROLE})
+	if other.PrivateData == nil {
+		t.Error("sys role should keep p on any node")
+	}
+}
+
+// Ownership is per node: a caller who owns the parent does not thereby own everything
+// its out-edges point at.
+func TestRedactPrivateDataForIsPerNode(t *testing.T) {
+	child := nodeWithPerms("0xchild", "0xsomeoneelse", "sgi-1", "r")
+	child.PrivateData = s("child secret")
+	parent := nodeWithPerms("0xparent", "0xowner", "sgi-1", "r")
+	parent.PrivateData = s("parent secret")
+	parent.OutEdges = &[]*GraphNode{child}
+
+	parent.RedactPrivateDataFor(&sec.UserAuthData{Uid: "0xowner", Role: "user"})
+
+	if parent.PrivateData == nil {
+		t.Error("owner should keep p on the node they own")
+	}
+	if child.PrivateData != nil {
+		t.Error("p on an out-edge owned by someone else must still be stripped")
+	}
+}
+
+func TestRedactPrivateDataForNilCases(t *testing.T) {
+	var n *GraphNode
+	n.RedactPrivateDataFor(&sec.UserAuthData{Uid: "0xowner"}) // must not panic
+
+	// A nil uad is treated as "not the owner": redact rather than leak.
+	owned := nodeWithPerms("0xabc", "0xowner", "sgi-1", "r")
+	owned.PrivateData = s("secret")
+	owned.RedactPrivateDataFor(nil)
+	if owned.PrivateData != nil {
+		t.Error("nil uad should redact")
+	}
+}
+
 func TestAuthzDataUnpackOwnerAndSysPaths(t *testing.T) {
 	key := newKey(t)
 	owner := &sec.UserAuthData{Uid: "0xowner", Role: "user", SecretKey: key}

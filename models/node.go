@@ -177,6 +177,28 @@ func AuthzDataUnpackNodeSlice(nodeSlice *[]*GraphNode, uad sec.UserAuthData, per
 	return false
 }
 
+// RedactPrivateDataFor clears the owner-private `p` predicate on this node and on every
+// node reachable through its out-edges, leaving it in place only where uad owns the node.
+// Sys-role users see `p` everywhere; a nil uad redacts unconditionally.
+//
+// `p` is documented as visible only to the node's owner and to sys-role users, so the
+// response path calls this before a node is marshalled; see
+// responses.CoggedResponse.AuthzDataPack. Ownership is re-evaluated per node because an
+// out-edge can point at a node with a different owner than its parent.
+func (n *GraphNode) RedactPrivateDataFor(uad *sec.UserAuthData) {
+	if n == nil || (uad != nil && uad.IsAdmin()) {
+		return
+	}
+	if uad == nil || n.Owner == nil || n.Owner.Uid != uad.Uid {
+		n.PrivateData = nil
+	}
+	if n.OutEdges != nil {
+		for _, e := range *n.OutEdges {
+			e.RedactPrivateDataFor(uad)
+		}
+	}
+}
+
 func NewGraphNodeJustOwnerAndPerms(origNode *GraphNode) *GraphNode {
 	if origNode == nil {
 		return nil
