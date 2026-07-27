@@ -204,7 +204,7 @@ A Cogged type N node has the following predicates:
 |`s`|bool|Permission flag that indicates whether users other than the owner or superusers can share this node with another user|
 |`id`|string|The custom application can use this field for whatever format of unique identifier it wants for the node, e.g. `"52ca310b-9710-4749-b2a0-288a9a03b5a3"`, `"+63-875-9723-8373"`, `"namespace/category/7a2e6f4"` |
 |`ty`|string|The custom application can use this field to categorise nodes into custom types or classes eg. `Project`, `Message`, `Customer`, `Vehicle`, etc.|
-|`p`|string|The custom application can use this field to store data that is only visible to the node owner (or superusers)|
+|`p`|string|The custom application can use this field to store data that is only visible to the node owner (or superusers). Cogged enforces this on both paths: it strips `p` from every node in a response the caller doesn't own, and it rejects queries from non-`sys` users that filter or order by `p` (so the value can't be inferred from which nodes a filter matches). It can still be named in `select` — the owner gets it, everyone else gets the node without it.|
 |`s1`|string|The custom application can use this field for arbitrary text - this field is trigram/term-indexed for searchability|
 |`s2`|string|The custom application can use this field for arbitrary text - this field is term-indexed for searchability|
 |`s3`|string|The custom application can use this field for arbitrary text|

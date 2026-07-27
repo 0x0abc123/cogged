@@ -48,6 +48,14 @@ Nodes are stored in Dgraph with **short predicate names** (`services/dbsetup.go`
 
 - Outbound: `GraphNode.AuthzDataPack(uad)` builds `uid.owner.sgi.perms`, MACs it with the
   per-user key, and puts the result in the node's `ad` field (`models/node.go`).
+  The same pass in `responses.CoggedResponse.AuthzDataPack` drops nodes the caller cannot read
+  and calls `GraphNode.RedactPrivateDataFor(uad)`, which clears `p` on every node (recursing
+  into `e`, ownership re-checked per node) unless the caller owns it or is `sys`.
+- `p` is owner-private on both paths. Stripping it from responses is only half the job, so
+  `checkPrivateFieldQueryable` (`services/db.go`) also rejects any non-admin query naming `p` in
+  `filters` or `order_by` — otherwise `eq(p, "guess")` would confirm the value through the result
+  set. `p` stays in `allowedFields` because `select` must still accept it; **any new entry point
+  that compiles a client-supplied clause must call the guard.**
 - Inbound: `AuthzDataUnpack` / `AuthzDataUnpackADString` verify the MAC, then allow the op only
   if the caller **owns** the node, is role `sys`, or **can access the SGI and holds the required
   permissions** (`state.UsmUserCanAccessSgi` + `HasRequiredPermissions`). Only then is the real

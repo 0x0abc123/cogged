@@ -24,6 +24,9 @@ func (resp *CoggedResponse) AuthzDataPack(uad *sec.UserAuthData) {
 			if (owner != nil && owner.Uid == uad.Uid) ||
 				uad.IsAdmin() ||
 				(node.Sgi != nil && state.UsmUserCanAccessSgi(uad.Uid, *node.Sgi) && node.PermRead != nil && *node.PermRead) {
+				// A node reached through a share edge is readable, but `p` belongs to its
+				// owner: strip it for anyone who is neither the owner nor a sys-role admin.
+				node.RedactPrivateDataFor(uad)
 				node.AuthzDataPack(uad)
 				filteredNodes = append(filteredNodes, node)
 			}
