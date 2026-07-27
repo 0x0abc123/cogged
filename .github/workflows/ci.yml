@@ -13,8 +13,8 @@ jobs:
     name: build, vet, unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -42,14 +42,14 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # golangci-lint v2 (via action v8): v1 binaries are built with Go < 1.25 and
-      # refuse to analyze this module (go.mod targets 1.25). The pinned version keeps
-      # results reproducible; bump deliberately.
-      - uses: golangci/golangci-lint-action@v8
+      # golangci-lint v2 (via action v9): v1 binaries are built with Go < 1.25 and
+      # refuse to analyze this module (go.mod targets 1.26). The pinned linter version
+      # keeps results reproducible; bump deliberately.
+      - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
 
@@ -60,8 +60,8 @@ jobs:
     # Non-blocking initially in case the image pull is slow/flaky; tighten once stable.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -75,8 +75,8 @@ jobs:
       run:
         working-directory: clients/typescript
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
