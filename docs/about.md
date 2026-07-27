@@ -216,7 +216,7 @@ A Cogged type N node has the following predicates:
 |`m`|datetime|Timestamp recording the date/time the node was last modified|
 |`t1`|datetime|Application-defined timestamp data, eg. event start time|
 |`t2`|datetime|Application-defined timestamp data, eg. event finish time|
-|`g`|geolocation|Application-defined geolocation data in lat/lon coordinates, eg. event location|
+|`g`|geolocation|Application-defined geolocation data, stored as a GeoJSON point in `[longitude, latitude]` order, eg. event location. Geo-indexed: see [Geo radius search](#geo-radius-search). It cannot be used in `filters` or `order_by`|
 
 ## Access Control
 
@@ -375,6 +375,16 @@ Each node has an optional `vec` predicate of Dgraph's `float32vector` type, back
 To search, a query request includes a `similar` block containing a query vector and a `top_k` count. Cogged runs Dgraph's `similar_to` function over the `vec` index to find the nearest nodes. Crucially, the same access controls still apply: the results are filtered to nodes the requesting user is allowed to read (they own it, it is in a share group they've been granted with the read permission set, or they are a `sys` user). Because the nearest-neighbour ranking happens *before* that filtering, a search may return fewer than `top_k` results when some of the closest vectors belong to nodes the user cannot read.
 
 Generating embeddings is left to the application — produce the vector however you prefer (a hosted embedding API, a local model, and so on) and store it on the node's `vec` field. Cogged is responsible only for storing the vectors and running the similarity search over them, scoped by its access-control rules.
+
+## Geo Radius Search
+
+Cogged nodes can store a location in the `g` predicate as a GeoJSON point, for example `{"type":"Point","coordinates":[151.2153,-33.8568]}`. Note the GeoJSON convention: **coordinates are `[longitude, latitude]`, longitude first**. The predicate is backed by Dgraph's geo index.
+
+To search, a query request includes a `geo` block containing a centre `point` and a `distance` in metres. Cogged runs Dgraph's `near()` function over the `g` index and returns every node whose point lies inside that radius. Like the `similar` block, `geo` replaces the root of the query, so `root_ids` and `depth` are ignored while `filters` and `select` still apply; `geo` and `similar` cannot be combined. The same access controls apply as everywhere else — a node matching geometrically is only returned if the caller may read it.
+
+This is a **containment** search, not a nearest-neighbour one. Dgraph returns geo matches in uid order, cannot sort by distance (ordering by a geo predicate is rejected outright — geo values are not sortable) and does not return the computed distance. Combining `geo` with `first` therefore yields an arbitrary subset of the nodes inside the radius rather than the closest ones; an application that needs nearest-first ordering must retrieve the whole radius and sort it itself.
+
+Because no filter operator can express a geo predicate, naming `g` in `filters` or `order_by` is rejected with a message pointing at the `geo` block. `g` remains valid in `select`, which is how you read a node's coordinates back.
 
 ## The API Documentation
 

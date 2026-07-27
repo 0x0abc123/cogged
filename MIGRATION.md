@@ -90,11 +90,21 @@ version marker doesn't match and re-applies the full current schema via `Alter`,
 the new `vec` predicate (and any others) on top of your imported data. This is additive and
 idempotent for predicates that already match.
 
+> **Adding an index reindexes existing data.** The `g` predicate gained `@index(geo)`, so the
+> first startup after upgrading rebuilds that index across every node that already carries a
+> location. Dgraph does this as a background task proportional to how much geo data you hold;
+> on a large dataset expect the first `Alter` to take a while, and plan the restart accordingly.
+> Deployments with no geo data are unaffected.
+
 ## 5. After migration
 
 - Existing nodes have **no embedding** — the `vec` predicate is empty until you backfill
   vectors (see the vector-search docs in [`docs/about.md`](./docs/about.md#vector-similarity-search)).
   Everything else works unchanged.
+- Existing `g` values become **searchable** once the geo index finishes building — no backfill
+  needed, since the coordinates were already stored (see
+  [Geo radius search](./docs/about.md#geo-radius-search)). Check they are in
+  `[longitude, latitude]` order: nothing enforced that before the predicate was indexed.
 - If you use **ACL** (enterprise), run the `dgraph upgrade` CLI to migrate ACL data
   structures across versions. OSS / no-ACL deployments don't need it.
 
