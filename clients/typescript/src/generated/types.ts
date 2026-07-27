@@ -838,10 +838,20 @@ export interface components {
             /** @description AuthzData identifiers that specify the GraphNodes that will be the target of incoming edges (from all nodes listed in incoming_ids) or where outgoing edges will be created from to link nodes listed in outgoing_ids. */
             subject_ids?: components["schemas"]["AuthzData"][];
         };
-        /** @description User-defined geolocation field */
+        /** @description User-defined geolocation field, stored in the `g` predicate as GeoJSON. The `g` predicate is geo-indexed: use the "geo" block on QueryRequest to find nodes within a radius of a point. */
         Geoloc: {
+            /**
+             * @description [longitude, latitude] - LONGITUDE FIRST, per GeoJSON. Longitude ranges over -180..180 and latitude over -90..90, so getting the order wrong silently places the point elsewhere (or is rejected by a geo query when the latitude exceeds 90).
+             * @example [
+             *       151.2153,
+             *       -33.8568
+             *     ]
+             */
             coordinates: number[];
-            /** @example Point */
+            /**
+             * @description GeoJSON geometry type. Cogged stores points, so this is "Point".
+             * @example Point
+             */
             type: string;
         };
         GraphNode: {
@@ -1245,7 +1255,7 @@ export interface components {
              *     - t2
              *     - g
              *
-             *     Selecting "p" is allowed for any caller, but the value is only returned on nodes the caller owns (or to sys role users); it is stripped from the rest.
+             *     Selecting "p" is allowed for any caller, but the value is only returned on nodes the caller owns (or to sys role users); it is stripped from the rest. "g" is selectable here even though it cannot be filtered on - see the "geo" block for geo search.
              */
             select?: string[];
             /**
@@ -1264,13 +1274,35 @@ export interface components {
              */
             after?: string;
             /**
-             * @description An indexed GraphNode predicate to order results by (e.g. c or m). When unset, results follow Dgraph's default uid order. Field names that are not allowed are ignored, except "p", which is owner-private - ordering by it is restricted to sys role callers and a non-admin request naming it is rejected (see the "field" property of QueryRequestClause).
+             * @description An indexed GraphNode predicate to order results by (e.g. c or m). When unset, results follow Dgraph's default uid order. Field names that are not allowed are ignored, with two exceptions that are rejected outright. "p" is owner-private and restricted to sys role callers; "g" is a geo predicate and is not sortable at all (see the "field" property of QueryRequestClause).
              * @example c
              */
             order_by?: string;
             /** @description Order descending instead of ascending; only applies when order_by is set. */
             order_desc?: boolean;
             similar?: components["schemas"]["QuerySimilarity"];
+            geo?: components["schemas"]["QueryGeo"];
+        };
+        /**
+         * @description Geo radius search: returns nodes whose `g` point lies within "distance" metres of "point", using the geo index on the `g` predicate, instead of a uid/root traversal. Like "similar" it replaces the root function, so root_ids and depth are ignored; filters and select still apply and results are still scoped by the caller's read permissions. "geo" and "similar" cannot both be set in one request.
+         *
+         *     This is a containment test, NOT a nearest-neighbour search. Dgraph returns geo matches in uid order, cannot sort by distance (ordering by a geo predicate is rejected: "Value of type: geo isn't sortable") and does not return the computed distance. Combining this with "first" therefore returns an arbitrary N of the nodes inside the radius, NOT the N nearest. A caller who needs nearest-first must retrieve the whole radius and sort client-side.
+         */
+        QueryGeo: {
+            /**
+             * @description Centre of the search as [longitude, latitude] - LONGITUDE FIRST, matching GeoJSON and the order stored in a node's `g` predicate. Longitude must be between -180 and 180, latitude between -90 and 90; a request outside those ranges is rejected (which also catches the two being swapped).
+             * @example [
+             *       151.2153,
+             *       -33.8568
+             *     ]
+             */
+            point: number[];
+            /**
+             * Format: float
+             * @description Search radius in metres. Must be greater than 0 and at most 20100000 (past roughly half the Earth's circumference every point matches).
+             * @example 5000
+             */
+            distance: number;
         };
         /** @description Vector-similarity search: returns the nodes nearest to a query vector using the hnsw index on the `vec` predicate, instead of a uid/root traversal. Results are still scoped by the caller's read permissions and any filters/select. */
         QuerySimilarity: {
@@ -1307,9 +1339,10 @@ export interface components {
              *     - m
              *     - t1
              *     - t2
-             *     - g
              *
              *     "p" holds owner-private data and is not returned to other users, so filtering on it is restricted to sys role callers: a non-admin request naming "p" in any clause (including nested and/or clauses) is rejected with the error "field 'p' is private and cannot be used in filters or order_by", rather than being run. This prevents the value being inferred from which nodes a filter matches.
+             *
+             *     "g" is absent from this list on purpose: no filter op can express a geo predicate, so naming it in a clause is rejected. Use the "geo" block on QueryRequest for a radius search. "g" is still valid in "select".
              * @example id
              */
             field?: string;
@@ -1349,9 +1382,10 @@ export interface components {
              *     - m
              *     - t1
              *     - t2
-             *     - g
              *
              *     "p" holds owner-private data and is not returned to other users, so filtering on it is restricted to sys role callers: a non-admin request naming "p" in any clause (including nested and/or clauses) is rejected with the error "field 'p' is private and cannot be used in filters or order_by", rather than being run. This prevents the value being inferred from which nodes a filter matches.
+             *
+             *     "g" is absent from this list on purpose: no filter op can express a geo predicate, so naming it in a clause is rejected. Use the "geo" block on QueryRequest for a radius search. "g" is still valid in "select".
              * @example id
              */
             field?: string;

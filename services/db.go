@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -59,7 +60,17 @@ const (
 	// order by it; see checkPrivateFieldQueryable.
 	PRIVATE_FIELD string = "p"
 
+	// GEO_FIELD is the `g` geo predicate. It may be named in `select`, but no
+	// QueryRequestClause op can express a geo predicate, so naming it in filters or
+	// order_by is rejected; radius search goes through QueryRequest.Geo instead.
+	// See checkGeoFieldNotFiltered.
+	GEO_FIELD string = "g"
+
 	MAX_QUERY_RECURSE_DEPTH uint = 20
+
+	// MAX_GEO_DISTANCE_METRES caps a radius search. Half the Earth's circumference is
+	// ~20,004km, past which every point on the globe is inside the radius.
+	MAX_GEO_DISTANCE_METRES float64 = 20_100_000
 
 	DEFAULT_SIMILAR_TOPK uint = 10
 	MAX_SIMILAR_TOPK     uint = 1000
@@ -556,25 +567,96 @@ func renderReadAuthzFilter(et EdgeType, uad *sec.UserAuthData, allowedSgis []str
 	return "(" + ownClause + " OR " + sgiClause + ")"
 }
 
-// clauseNamesPrivateField reports whether any clause in the tree filters on `p`.
-func clauseNamesPrivateField(clause *req.QueryRequestClause) bool {
+// clauseNamesField reports whether any clause in the tree filters on the named predicate.
+func clauseNamesField(clause *req.QueryRequestClause, field string) bool {
 	if clause == nil {
 		return false
 	}
-	if strings.EqualFold(clause.Field, PRIVATE_FIELD) {
+	if strings.EqualFold(clause.Field, field) {
 		return true
 	}
 	for i := range clause.And {
-		if clauseNamesPrivateField(&clause.And[i]) {
+		if clauseNamesField(&clause.And[i], field) {
 			return true
 		}
 	}
 	for i := range clause.Or {
-		if clauseNamesPrivateField(&clause.Or[i]) {
+		if clauseNamesField(&clause.Or[i], field) {
 			return true
 		}
 	}
 	return false
+}
+
+// queryNamesField reports whether a request filters or orders by the named predicate.
+func queryNamesField(q *req.QueryRequest, field string) bool {
+	return clauseNamesField(q.Filters, field) || clauseNamesField(q.RootQuery, field) ||
+		(q.OrderBy != nil && strings.EqualFold(*q.OrderBy, field))
+}
+
+// checkQueryFields applies the per-field restrictions that allowedFields is too coarse to
+// express, plus the mutual exclusion between the root-function query modes. It runs before
+// any DQL is built; a non-nil return is the error response to send back.
+func checkQueryFields(q *req.QueryRequest, uad *sec.UserAuthData) *res.CoggedResponse {
+	if denied := checkPrivateFieldQueryable(q, uad); denied != nil {
+		return denied
+	}
+	if denied := checkGeoFieldNotFiltered(q); denied != nil {
+		return denied
+	}
+	if q.Similar != nil && q.Geo != nil {
+		return res.CoggedResponseFromError("'similar' and 'geo' cannot be combined in one query")
+	}
+	return nil
+}
+
+// checkGeoFieldNotFiltered rejects a query naming `g` in filters or order_by. No filter op
+// can express a geo predicate — `has` compiles to a regexp and `eq` to a string compare,
+// neither of which Dgraph accepts on a geo value — and geo values are not sortable at all
+// ("Value of type: geo isn't sortable"). Both used to surface as an opaque "DB query
+// failed"; point the caller at the geo block instead. `g` remains valid in `select`.
+func checkGeoFieldNotFiltered(q *req.QueryRequest) *res.CoggedResponse {
+	if queryNamesField(q, GEO_FIELD) {
+		return res.CoggedResponseFromError("field 'g' is a geo predicate: use the 'geo' block for a radius search, it cannot be used in filters or order_by")
+	}
+	return nil
+}
+
+// formatCoord renders a float as a plain decimal literal, never exponent notation, so it
+// is safe to inline into a DQL geo literal.
+func formatCoord(f float64) string {
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// renderGeoRootFunc validates a radius search and returns the DQL near() root function.
+//
+// Nothing client-supplied reaches the query as text: the coordinates arrive as float64
+// (already parsed by encoding/json) and are re-rendered from those floats, so there is no
+// injection surface to defend — unlike the vector path, which has to regex-validate a
+// client-supplied string before inlining it.
+func renderGeoRootFunc(g *req.QueryGeo) (string, error) {
+	if len(g.Point) != 2 {
+		return "", DBError{Info: "geo point must be [longitude, latitude]"}
+	}
+	lon, lat := g.Point[0], g.Point[1]
+	for _, f := range []float64{lon, lat, g.Distance} {
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return "", DBError{Info: "geo point and distance must be finite numbers"}
+		}
+	}
+	if lon < -180 || lon > 180 {
+		return "", DBError{Info: "geo longitude must be between -180 and 180 (point is [longitude, latitude])"}
+	}
+	if lat < -90 || lat > 90 {
+		return "", DBError{Info: "geo latitude must be between -90 and 90 (point is [longitude, latitude])"}
+	}
+	if g.Distance <= 0 {
+		return "", DBError{Info: "geo distance must be greater than 0 metres"}
+	}
+	if g.Distance > MAX_GEO_DISTANCE_METRES {
+		return "", DBError{Info: fmt.Sprintf("geo distance must be at most %.0f metres", MAX_GEO_DISTANCE_METRES)}
+	}
+	return "near(" + GEO_FIELD + ", [" + formatCoord(lon) + ", " + formatCoord(lat) + "], " + formatCoord(g.Distance) + ")", nil
 }
 
 // checkPrivateFieldQueryable rejects a query that filters or orders on the owner-private
@@ -593,15 +675,14 @@ func checkPrivateFieldQueryable(q *req.QueryRequest, uad *sec.UserAuthData) *res
 	if uad == nil || uad.IsAdmin() {
 		return nil
 	}
-	if clauseNamesPrivateField(q.Filters) || clauseNamesPrivateField(q.RootQuery) ||
-		(q.OrderBy != nil && strings.EqualFold(*q.OrderBy, PRIVATE_FIELD)) {
+	if queryNamesField(q, PRIVATE_FIELD) {
 		return res.CoggedResponseFromError("field 'p' is private and cannot be used in filters or order_by")
 	}
 	return nil
 }
 
 func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAuthData, allowedSgis []string) *res.CoggedResponse {
-	if denied := checkPrivateFieldQueryable(q, uad); denied != nil {
+	if denied := checkQueryFields(q, uad); denied != nil {
 		return denied
 	}
 
@@ -627,6 +708,20 @@ func (d *DB) QueryWithOptions(q *req.QueryRequest, et EdgeType, uad *sec.UserAut
 		query += `
 		query q(__QVARS__) {
 			qr(func: similar_to(vec, ` + fmt.Sprintf("%d", topK) + `, "` + vec + `")__PAGEARGS__)
+		`
+
+	} else if q.Geo != nil {
+		// Radius search: every node whose `g` point is within Distance metres of Point.
+		// Results are still access-filtered (@filter below). Note this is a containment
+		// test — Dgraph returns geo matches in uid order, so First truncates arbitrarily
+		// rather than yielding the nearest N. See req.QueryGeo.
+		rootFunc, gerr := renderGeoRootFunc(q.Geo)
+		if gerr != nil {
+			return res.CoggedResponseFromError(gerr.Error())
+		}
+		query += `
+		query q(__QVARS__) {
+			qr(func: ` + rootFunc + `__PAGEARGS__)
 		`
 
 	} else if q.RootQuery != nil {

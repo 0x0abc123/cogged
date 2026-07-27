@@ -143,6 +143,40 @@ Notes:
   `top_k`** hits if some of the nearest vectors belong to other users.
 - `top_k` defaults to 10 (capped at 1000); `similar` can be combined with `filters` and `select`.
 
+### Geo radius search
+
+Nodes can carry a location in the `g` field, and `query()` / `listNodes()` can return every
+node within a radius of a point via `geo`.
+
+```ts
+// Store a location. Coordinates are [longitude, latitude] — longitude FIRST.
+await cogged.createUserNode({
+  node: {
+    uid: "$cafe", ty: "cafe", s1: "Corner Roasters", r: true,
+    g: { type: "Point", coordinates: [151.2153, -33.8568] },
+  },
+});
+
+// Every cafe within 5km of the Sydney Opera House (scoped to what you can read).
+const nearby = await cogged.query({
+  geo: { point: [151.2153, -33.8568], distance: 5000 }, // metres
+  filters: { field: "ty", op: "eq", val: "cafe" },
+  select: ["id", "s1", "g"],
+});
+```
+
+Notes:
+- **`point` is `[longitude, latitude]`**, per GeoJSON — the same order the node stores.
+  Swapping them searches the wrong place, or is rejected if the latitude exceeds ±90.
+- This is a radius test, **not "the N nearest"**. Matches come back in uid order, distance is
+  neither returned nor sortable (`order_by: "g"` is rejected), so pairing `geo` with `first`
+  gives an arbitrary N inside the radius. Sort client-side from the returned `g` if you need
+  nearest-first.
+- Like `similar`, `geo` replaces the query root: `root_ids`/`depth` are ignored, `filters` and
+  `select` still apply, and `geo` + `similar` together is an error.
+- `distance` is in metres, must be > 0, and is capped at 20,100,000.
+- `g` cannot be used in `filters` or `order_by` — the `geo` block is the only way to query it.
+
 ### AuthzData
 
 `AuthzData` (the `ad` field on nodes and users) is an **opaque, server-signed token**.

@@ -15,6 +15,7 @@ import (
 
 	cm "cogged/models"
 	req "cogged/requests"
+	res "cogged/responses"
 	sec "cogged/security"
 	svc "cogged/services"
 	dbtest "cogged/services/dbtest"
@@ -511,5 +512,109 @@ func TestDBVectorSimilarity(t *testing.T) {
 	}
 	if findByID(r.ResultNodes, "vecB_"+suffix) {
 		t.Errorf("orthogonal vecB should not be in the top-2")
+	}
+}
+
+// TestDBGeoRadiusSearch verifies the geo-indexed `g` predicate and the near() radius
+// search against a real Dgraph: that Geoloc round-trips through the write path, that a
+// radius search returns exactly the points inside it, and that the search is still scoped
+// by the caller's read permissions.
+//
+// Coordinates are [longitude, latitude]. Fixtures are real places around Sydney:
+// the Opera House, the QVB (~1.8km away), Manly (~11km) and Perth (~3300km).
+func TestDBGeoRadiusSearch(t *testing.T) {
+	db, _ := dbtest.MustStart(t)
+	rnd, _ := sec.GenerateRandomBytes(5)
+	suffix := fmt.Sprintf("%x", rnd)
+
+	ures, err := db.UpsertUsers(&[]*cm.GraphUser{{
+		GraphBase: cm.GraphBase{Uid: "owner"}, Username: strp("geoowner_" + suffix),
+		PasswordHash: strp("pw"), Role: strp("user"),
+	}})
+	if err != nil {
+		t.Fatalf("UpsertUsers: %v", err)
+	}
+	ownerUID := ures.CreatedUids["owner"]
+	owner := &cm.GraphUser{GraphBase: cm.GraphBase{Uid: ownerUID}}
+	yes := true
+
+	mk := func(key, id string, lon, lat float64) *cm.GraphNode {
+		n := cm.NewGraphNodeJustUID(key)
+		n.Owner, n.Id, n.Type, n.PermRead = owner, strp(id+"_"+suffix), strp("geopoint"), &yes
+		n.Location = &cm.Geoloc{Type: "Point", Coords: []float64{lon, lat}}
+		return n
+	}
+	nodes := []*cm.GraphNode{
+		mk("opera", "opera", 151.2153, -33.8568),
+		mk("qvb", "qvb", 151.2067, -33.8715),
+		mk("manly", "manly", 151.2870, -33.7969),
+		mk("perth", "perth", 115.8575, -31.9505),
+	}
+	if _, err := db.UpsertNodes(&nodes); err != nil {
+		t.Fatalf("UpsertNodes with Geoloc: %v", err)
+	}
+
+	ownerUAD := &sec.UserAuthData{Uid: ownerUID, Role: "user"}
+	search := func(lon, lat, metres float64) *res.CoggedResponse {
+		t.Helper()
+		r := db.QueryWithOptions(&req.QueryRequest{
+			Geo:    &req.QueryGeo{Point: []float64{lon, lat}, Distance: metres},
+			Select: []string{"id", "g"},
+		}, svc.NODENODE, ownerUAD, nil)
+		if r.Error != "" {
+			t.Fatalf("geo query error: %s", r.Error)
+		}
+		return r
+	}
+
+	// 5km around the Opera House: catches the QVB, excludes Manly and Perth.
+	r := search(151.2153, -33.8568, 5000)
+	if !findByID(r.ResultNodes, "opera_"+suffix) || !findByID(r.ResultNodes, "qvb_"+suffix) {
+		t.Errorf("5km radius should include opera and qvb, got %d nodes", len(r.ResultNodes))
+	}
+	if findByID(r.ResultNodes, "manly_"+suffix) {
+		t.Error("manly (~11km) should be outside a 5km radius")
+	}
+	if findByID(r.ResultNodes, "perth_"+suffix) {
+		t.Error("perth (~3300km) should be outside a 5km radius")
+	}
+
+	// widening to 20km pulls Manly in but still not Perth
+	r = search(151.2153, -33.8568, 20000)
+	if !findByID(r.ResultNodes, "manly_"+suffix) {
+		t.Error("manly should be inside a 20km radius")
+	}
+	if findByID(r.ResultNodes, "perth_"+suffix) {
+		t.Error("perth should still be outside a 20km radius")
+	}
+
+	// `g` round-trips: the coordinates come back as GeoJSON on the node
+	var opera *cm.GraphNode
+	for _, n := range r.ResultNodes {
+		if n.Id != nil && *n.Id == "opera_"+suffix {
+			opera = n
+		}
+	}
+	if opera == nil {
+		t.Fatal("opera node missing from results")
+	}
+	if opera.Location == nil || len(opera.Location.Coords) != 2 {
+		t.Fatalf("g did not round-trip, got %+v", opera.Location)
+	}
+	if opera.Location.Coords[0] != 151.2153 || opera.Location.Coords[1] != -33.8568 {
+		t.Errorf("g coordinates wrong (longitude first?), got %v", opera.Location.Coords)
+	}
+
+	// a stranger with no grants sees nothing, even though the points match geometrically
+	stranger := &sec.UserAuthData{Uid: "0xdeadbeef", Role: "user"}
+	sr := db.QueryWithOptions(&req.QueryRequest{
+		Geo:    &req.QueryGeo{Point: []float64{151.2153, -33.8568}, Distance: 20000},
+		Select: []string{"id"},
+	}, svc.NODENODE, stranger, nil)
+	if sr.Error != "" {
+		t.Fatalf("stranger geo query error: %s", sr.Error)
+	}
+	if len(sr.ResultNodes) != 0 {
+		t.Errorf("geo search must still be read-filtered; stranger saw %d nodes", len(sr.ResultNodes))
 	}
 }

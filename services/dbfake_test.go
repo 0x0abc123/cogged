@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -309,6 +310,153 @@ func TestQueryWithOptionsAllowsPrivateFieldForAdminAndInSelect(t *testing.T) {
 	}
 	if !strings.Contains(fuser.lastQuery, "id p") {
 		t.Errorf("select should still include p:\n%s", fuser.lastQuery)
+	}
+}
+
+func TestQueryWithOptionsGeoRadiusSearch(t *testing.T) {
+	admin := &sec.UserAuthData{Role: sec.SYS_ROLE}
+
+	// builds a near() root func with the point and radius inlined as plain decimals
+	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	q := &req.QueryRequest{Geo: &req.QueryGeo{Point: []float64{151.2153, -33.8568}, Distance: 5000}}
+	if resp := newFakeDB(fake).QueryWithOptions(q, NODENODE, admin, nil); resp.Error != "" {
+		t.Fatalf("unexpected error: %q", resp.Error)
+	}
+	if !strings.Contains(fake.lastQuery, "near(g, [151.2153, -33.8568], 5000)") {
+		t.Errorf("geo query malformed:\n%s", fake.lastQuery)
+	}
+
+	// tiny and large magnitudes must not render in exponent notation, which DQL rejects
+	fexp := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(fexp).QueryWithOptions(&req.QueryRequest{
+		Geo: &req.QueryGeo{Point: []float64{0.0000001, -0.0000002}, Distance: 12000000},
+	}, NODENODE, admin, nil)
+	if strings.ContainsAny(fexp.lastQuery, "eE") && strings.Contains(fexp.lastQuery, "e-") {
+		t.Errorf("coordinates must not use exponent notation:\n%s", fexp.lastQuery)
+	}
+	if !strings.Contains(fexp.lastQuery, "near(g, [0.0000001, -0.0000002], 12000000)") {
+		t.Errorf("small coordinates rendered wrong:\n%s", fexp.lastQuery)
+	}
+
+	// the read-authz filter still applies to a geo search for a non-admin
+	fauthz := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	reader := &sec.UserAuthData{Uid: "0x1a", Role: "user"}
+	newFakeDB(fauthz).QueryWithOptions(q, NODENODE, reader, []string{"sgiA"})
+	for _, want := range []string{"near(g,", "uid_in(own, 0x1a)", `eq(sgi, ["sgiA"])`} {
+		if !strings.Contains(fauthz.lastQuery, want) {
+			t.Errorf("geo query missing %q:\n%s", want, fauthz.lastQuery)
+		}
+	}
+
+	// pagination composes with the geo root func
+	first := 5
+	fpage := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	newFakeDB(fpage).QueryWithOptions(&req.QueryRequest{
+		Geo:   &req.QueryGeo{Point: []float64{0, 0}, Distance: 100},
+		First: &first,
+	}, NODENODE, admin, nil)
+	if !strings.Contains(fpage.lastQuery, "near(g, [0, 0], 100), first: 5)") {
+		t.Errorf("pagination args not placed inside the geo func:\n%s", fpage.lastQuery)
+	}
+}
+
+func TestQueryWithOptionsGeoValidation(t *testing.T) {
+	admin := &sec.UserAuthData{Role: sec.SYS_ROLE}
+
+	cases := []struct {
+		name string
+		geo  *req.QueryGeo
+	}{
+		{"empty point", &req.QueryGeo{Point: []float64{}, Distance: 100}},
+		{"one coordinate", &req.QueryGeo{Point: []float64{1}, Distance: 100}},
+		{"three coordinates", &req.QueryGeo{Point: []float64{1, 2, 3}, Distance: 100}},
+		{"longitude too high", &req.QueryGeo{Point: []float64{180.1, 0}, Distance: 100}},
+		{"longitude too low", &req.QueryGeo{Point: []float64{-180.1, 0}, Distance: 100}},
+		// 100 is a valid longitude but not a valid latitude: catches lat/lon swapped
+		{"latitude out of range", &req.QueryGeo{Point: []float64{0, 100}, Distance: 100}},
+		{"zero distance", &req.QueryGeo{Point: []float64{0, 0}, Distance: 0}},
+		{"negative distance", &req.QueryGeo{Point: []float64{0, 0}, Distance: -1}},
+		{"distance over cap", &req.QueryGeo{Point: []float64{0, 0}, Distance: MAX_GEO_DISTANCE_METRES + 1}},
+		{"NaN coordinate", &req.QueryGeo{Point: []float64{math.NaN(), 0}, Distance: 100}},
+		{"Inf distance", &req.QueryGeo{Point: []float64{0, 0}, Distance: math.Inf(1)}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+			resp := newFakeDB(fake).QueryWithOptions(&req.QueryRequest{Geo: tc.geo}, NODENODE, admin, nil)
+			if resp.Error == "" {
+				t.Error("invalid geo request should be rejected")
+			}
+			if fake.lastQuery != "" {
+				t.Errorf("no query should reach Dgraph, got:\n%s", fake.lastQuery)
+			}
+		})
+	}
+}
+
+// `g` cannot be expressed by any filter op, so naming it in filters or order_by is
+// refused with a pointer at the geo block rather than an opaque "DB query failed".
+func TestQueryWithOptionsRejectsGeoFieldInFilters(t *testing.T) {
+	admin := &sec.UserAuthData{Role: sec.SYS_ROLE}
+	orderByGeo := "g"
+
+	cases := []struct {
+		name string
+		q    *req.QueryRequest
+	}{
+		{"filter on g", &req.QueryRequest{
+			RootIDs: []string{"0x5"},
+			Filters: &req.QueryRequestClause{Field: "g", Op: "eq", Val: "somewhere"},
+		}},
+		{"nested filter on g", &req.QueryRequest{
+			RootIDs: []string{"0x5"},
+			Filters: &req.QueryRequestClause{And: []req.QueryRequestClause{
+				{Field: "ty", Op: "eq", Val: "place"},
+				{Field: "G", Op: "has", Val: "somewhere"},
+			}},
+		}},
+		{"order_by g", &req.QueryRequest{RootIDs: []string{"0x5"}, OrderBy: &orderByGeo}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+			resp := newFakeDB(fake).QueryWithOptions(tc.q, NODENODE, admin, nil)
+			if resp.Error == "" {
+				t.Error("naming g in filters/order_by should be refused")
+			}
+			if fake.lastQuery != "" {
+				t.Errorf("no query should reach Dgraph, got:\n%s", fake.lastQuery)
+			}
+		})
+	}
+
+	// but g is still selectable
+	fsel := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	resp := newFakeDB(fsel).QueryWithOptions(&req.QueryRequest{
+		RootIDs: []string{"0x5"},
+		Select:  []string{"id", "g"},
+	}, NODENODE, admin, nil)
+	if resp.Error != "" {
+		t.Errorf("selecting g should be allowed, got %q", resp.Error)
+	}
+	if !strings.Contains(fsel.lastQuery, "id g") {
+		t.Errorf("select should include g:\n%s", fsel.lastQuery)
+	}
+}
+
+func TestQueryWithOptionsGeoAndSimilarAreExclusive(t *testing.T) {
+	fake := &fakeClient{queryJSON: []byte(`{"qr":[]}`)}
+	resp := newFakeDB(fake).QueryWithOptions(&req.QueryRequest{
+		Geo:     &req.QueryGeo{Point: []float64{0, 0}, Distance: 100},
+		Similar: &req.QuerySimilarity{Vector: "[1,2]"},
+	}, NODENODE, &sec.UserAuthData{Role: sec.SYS_ROLE}, nil)
+	if resp.Error == "" {
+		t.Error("combining geo and similar should be refused")
+	}
+	if fake.lastQuery != "" {
+		t.Errorf("no query should reach Dgraph, got:\n%s", fake.lastQuery)
 	}
 }
 

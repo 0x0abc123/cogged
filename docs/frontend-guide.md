@@ -142,7 +142,7 @@ compiles `filters` into DQL (`services/db.go`), so a filter is only usable if th
 | `c` | ISO string | `datetime(hour)` | `eq` `gt` `lt` `ge` `le` | ✓ | Created — **server-set, read-only.** |
 | `m` | ISO string | `datetime(hour)` | `eq` `gt` `lt` `ge` `le` | ✓ | Modified — **server-set**; drives delta sync (§6). |
 | `t1` `t2` | ISO string | `datetime(hour)` | `eq` `gt` `lt` `ge` `le` | ✓ | **Your two range-queryable / sortable fields.** |
-| `g` | `Geoloc` | none | — | ✗ | Store-only; no geo query op exists. |
+| `g` | `Geoloc` | `geo` | `geo` block only | ✗ | **Radius search.** Not usable in `filters` — see below. |
 | `vec` | `string` | `hnsw(cosine)` | `similar` only | n/a | Embedding. **Not in `select` — write-only.** |
 | `e` | `NodeEdgeData[]` | `@reverse` | — | n/a | Out-edges; include in `select` to see structure. |
 
@@ -162,8 +162,10 @@ Consequences worth internalising:
   facet slot — never design a query around it. Dgraph nominally
   permits `eq` against a `term` index, but the semantics are token-based — do not design around
   `eq` on `s1`, `s2`, or `id`.
-- **`b`, `n1`, `n2`, `g`, `s2` are invisible to queries.** That is fine and it is where most of a
+- **`b`, `n1`, `n2`, `s2` are invisible to queries.** That is fine and it is where most of a
   domain object should live.
+- **`g` is queryable, but only through its own request block** (`geo`), never through `filters`.
+  Naming `g` in a filter clause or `order_by` is rejected outright. See §5a.
 
 ---
 
@@ -178,12 +180,50 @@ For each property of your domain type, ask in order:
 3. **Do I filter it by range, or sort by it?** → `t1`, then `t2`. Encode non-dates as dates if you
    must (a rank as an epoch offset), or accept client-side sorting.
 4. **Do I search it semantically?** → embed it and write `vec`.
-5. **Otherwise** → it goes in the `b` JSON blob.
+5. **Is it a place I search by proximity?** → `g` (see §5a).
+6. **Otherwise** → it goes in the `b` JSON blob.
 
 Then: `ty` is the type name, `id` is your stable app key, and structure is edges.
 
 Two properties competing for `s3` is the signal to **split the type into two nodes** joined by an
 edge, rather than to overload a slot.
+
+---
+
+## 5a. Geo: radius search on `g`
+
+`g` stores one GeoJSON point per node and is geo-indexed. It has its own request block rather
+than a filter op, because no `filters` operator can express a geo predicate:
+
+```ts
+const res = await cogged.query({
+  geo: { point: [151.2153, -33.8568], distance: 5000 }, // metres
+  filters: { field: "ty", op: "eq", val: "cafe" },
+  select: ["id", "s1", "g"],
+});
+```
+
+**`point` is `[longitude, latitude]`.** Longitude first, per GeoJSON, and the same order the node
+stores. Swapping them is the mistake everyone makes once: it either silently searches the wrong
+place or, if the latitude lands outside ±90, gets rejected. Write a helper that takes named
+arguments and never pass a bare array around your app.
+
+Four things to internalise:
+
+- **It is a radius test, not "nearest N".** Dgraph returns geo matches in **uid order**, cannot
+  sort by distance (`order_by: "g"` is rejected — geo values are not sortable) and never returns
+  the computed distance. So `{geo: {...}, first: 10}` gives you **an arbitrary 10 inside the
+  radius, not the 10 nearest.** If you need nearest-first you must fetch the whole radius and sort
+  client-side, which means keeping the radius small enough that the whole set is affordable.
+- **It replaces the root function**, exactly like `similar`. `root_ids` and `depth` are ignored
+  when `geo` is set, and `geo` + `similar` together is an error. `filters` and `select` still apply.
+- **Access control still applies.** Results are read-filtered like any other query — a geometric
+  match on a node you cannot read returns nothing.
+- **Distance is capped** at 20,100,000 m (past roughly half the Earth's circumference every point
+  matches). `distance` must be > 0.
+
+To display distance in a list, compute it client-side from the returned `g` — the server won't
+give it to you.
 
 ### Keep the mapping in exactly one place
 
@@ -555,6 +595,9 @@ the correct recovery, and a server restart is the usual cause.
   owner-only bookkeeping you fetch alongside a node, never as a search key.
 - **`vec` cannot be read back.** It is not in the backend's allowed `select`/filter field list. If
   you need the embedding client-side, store a copy in `b`.
+- **A geo search cannot give you "the nearest N".** `near()` matches are returned in uid order and
+  distance is neither sortable nor returned, so `first` truncates arbitrarily. See §5a — this is
+  the geo equivalent of the `vec` caveat and it catches people out.
 - **`has` has no integration-test coverage.** The unit test confirms `has` compiles to
   `regexp(s1,$var)`, but no test runs it against a real Dgraph, and Dgraph's `regexp` normally wants
   a literal pattern. Verify substring search against a live server early rather than building a

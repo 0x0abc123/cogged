@@ -39,6 +39,29 @@ type QueryRequest struct {
 	// the given query vector. Results are still scoped by the caller's read
 	// permissions and any Filters/Select. See QuerySimilarity.
 	Similar *QuerySimilarity `json:"similar,omitempty"`
+
+	// Geo, when set, runs a radius search over the `g` predicate (geo index) instead of
+	// a uid/root traversal. Like Similar it replaces the root function, so RootIDs and
+	// Depth are ignored; Filters and Select still apply, and results are still scoped by
+	// the caller's read permissions. Geo and Similar cannot be combined. See QueryGeo.
+	Geo *QueryGeo `json:"geo,omitempty"`
+}
+
+// QueryGeo requests a radius search: every node whose `g` point lies within Distance
+// metres of Point.
+//
+// This is a containment test, not a nearest-neighbour search. Dgraph returns geo matches
+// in uid order and cannot sort by distance (`orderasc: g` is rejected outright with
+// "Value of type: geo isn't sortable"), nor does it return the computed distance. So
+// pairing this with First does NOT give "the N nearest" — it gives an arbitrary N of the
+// nodes inside the radius. If a caller needs nearest-first, they must fetch the whole
+// radius and sort client-side.
+type QueryGeo struct {
+	// Point is the centre of the search as [longitude, latitude] — longitude FIRST,
+	// matching GeoJSON and the format stored in a node's `g` predicate.
+	Point []float64 `json:"point"`
+	// Distance is the search radius in metres. Must be > 0.
+	Distance float64 `json:"distance"`
 }
 
 // QuerySimilarity requests a vector-similarity search.
