@@ -17,16 +17,18 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      # Actions are pinned by commit SHA (supply-chain hygiene); the trailing comment
+      # records which release each SHA is, so bumps stay reviewable.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - run: git fetch --force --tags
-      - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: stable
       # More assembly might be required: Docker logins, GPG, etc.
       # It all depends on your needs.
-      - uses: goreleaser/goreleaser-action@9ed2f89a662bf1735a48bc8557fd212fa902bebf
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           # either 'goreleaser' (default) or 'goreleaser-pro':
           distribution: goreleaser
